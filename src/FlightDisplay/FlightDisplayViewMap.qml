@@ -494,6 +494,8 @@ FlightMap {
     // Handle guided mode clicks
     MouseArea {
         anchors.fill: parent
+        // disable for full-auto Mode, by Gremsy
+        enabled: false
 
         QGCMenu {
             id: clickMenu

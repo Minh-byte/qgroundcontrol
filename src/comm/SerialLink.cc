@@ -241,7 +241,8 @@ bool SerialLink::_hardwareConnect(QSerialPort::SerialPortError& error, QString& 
     _port->setDataTerminalReady(true);
 
     qCDebug(SerialLinkLog) << "Configuring port";
-    _port->setBaudRate     (_serialConfig->baud());
+//    _port->setBaudRate     (_serialConfig->baud());
+    _port->setBaudRate(115200);
     _port->setDataBits     (static_cast<QSerialPort::DataBits>     (_serialConfig->dataBits()));
     _port->setFlowControl  (static_cast<QSerialPort::FlowControl>  (_serialConfig->flowControl()));
     _port->setStopBits     (static_cast<QSerialPort::StopBits>     (_serialConfig->stopBits()));

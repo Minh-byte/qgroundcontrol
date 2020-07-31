@@ -19,6 +19,8 @@
 #include "QGCLoggingCategory.h"
 #include "LinkInterface.h"
 
+#define __gremsy_modify__
+
 class Vehicle;
 
 Q_DECLARE_LOGGING_CATEGORY(PlanManagerLog)

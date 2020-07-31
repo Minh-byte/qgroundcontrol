@@ -73,7 +73,8 @@ Item {
         interactive:        polygonInteractive && _missionItem.isCurrentItem
         borderWidth:        1
         borderColor:        "black"
-        interiorColor:      "green"
+//        interiorColor:      "green"
+        interiorColor:      "red"
         interiorOpacity:    0.5
     }
 

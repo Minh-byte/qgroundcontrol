@@ -28,6 +28,7 @@ QGCMapPolygon::QGCMapPolygon(QObject* parent)
     , _dirty                (false)
     , _centerDrag           (false)
     , _ignoreCenterUpdates  (false)
+    , _obstacle_ignoreCenterUpdates (false)
     , _interactive          (false)
     , _resetActive          (false)
 {
@@ -39,6 +40,7 @@ QGCMapPolygon::QGCMapPolygon(const QGCMapPolygon& other, QObject* parent)
     , _dirty                (false)
     , _centerDrag           (false)
     , _ignoreCenterUpdates  (false)
+    , _obstacle_ignoreCenterUpdates (false)
     , _interactive          (false)
     , _resetActive          (false)
 {
@@ -53,6 +55,7 @@ void QGCMapPolygon::_init(void)
     connect(&_polygonModel, &QmlObjectListModel::countChanged, this, &QGCMapPolygon::_polygonModelCountChanged);
 
     connect(this, &QGCMapPolygon::pathChanged,  this, &QGCMapPolygon::_updateCenter);
+    connect(this, &QGCMapPolygon::obstacle_pathChanged,  this, &QGCMapPolygon::_obstacle_updateCenter);
     connect(this, &QGCMapPolygon::countChanged, this, &QGCMapPolygon::isValidChanged);
     connect(this, &QGCMapPolygon::countChanged, this, &QGCMapPolygon::isEmptyChanged);
 }
@@ -86,8 +89,27 @@ void QGCMapPolygon::clear(void)
     // we work around it by using the code above to remove all but the last point which in turn
     // will cause the polygon to go away.
     _polygonPath.clear();
-
     _polygonModel.clearAndDeleteContents();
+
+    emit cleared();
+
+    setDirty(true);
+}
+
+void QGCMapPolygon::_obstacle_clear()
+{
+    // Bug workaround, see below
+    while (_obstaclepolygonPath.count() > 1) {
+        _obstaclepolygonPath.takeLast();
+    }
+    emit obstacle_pathChanged();
+
+    // Although this code should remove the polygon from the map it doesn't. There appears
+    // to be a bug in QGCMapPolygon which causes it to not be redrawn if the list is empty. So
+    // we work around it by using the code above to remove all but the last point which in turn
+    // will cause the polygon to go away.
+    _obstaclepolygonPath.clear();
+    _obstaclepolygonModel.clearAndDeleteContents();
 
     emit cleared();
 
@@ -103,6 +125,17 @@ void QGCMapPolygon::adjustVertex(int vertexIndex, const QGeoCoordinate coordinat
         emit pathChanged();
     }
     setDirty(true);
+}
+
+void QGCMapPolygon::_obstacle_adjustVertex(int vertexIndex, const QGeoCoordinate coordinate)
+{
+    _obstaclepolygonPath[vertexIndex] = QVariant::fromValue(coordinate);
+    _obstaclepolygonModel.value<QGCQGeoCoordinate*>(vertexIndex)->setCoordinate(coordinate);
+    if (!_obstacle_centerDrag) {
+        // When dragging center we don't signal path changed until all vertices are updated
+        emit obstacle_pathChanged();
+    }
+//    setDirty(true);
 }
 
 void QGCMapPolygon::setDirty(bool dirty)
@@ -128,11 +161,36 @@ QGeoCoordinate QGCMapPolygon::_coordFromPointF(const QPointF& point) const
     return coord;
 }
 
+QGeoCoordinate QGCMapPolygon::_obstacle_coordFromPointF(const QPointF &point) const
+{
+    QGeoCoordinate coord;
+
+    if (_obstaclepolygonPath.count() > 0) {
+        QGeoCoordinate tangentOrigin = _obstaclepolygonPath[0].value<QGeoCoordinate>();
+        convertNedToGeo(-point.y(), point.x(), 0, tangentOrigin, &coord);
+    }
+
+    return coord;
+}
+
 QPointF QGCMapPolygon::_pointFFromCoord(const QGeoCoordinate& coordinate) const
 {
     if (_polygonPath.count() > 0) {
         double y, x, down;
         QGeoCoordinate tangentOrigin = _polygonPath[0].value<QGeoCoordinate>();
+
+        convertGeoToNed(coordinate, tangentOrigin, &y, &x, &down);
+        return QPointF(x, -y);
+    }
+
+    return QPointF();
+}
+
+QPointF QGCMapPolygon::_obstacle_pointFFromCoord(const QGeoCoordinate &coordinate) const
+{
+    if (_obstaclepolygonPath.count() > 0) {
+        double y, x, down;
+        QGeoCoordinate tangentOrigin = _obstaclepolygonPath[0].value<QGeoCoordinate>();
 
         convertGeoToNed(coordinate, tangentOrigin, &y, &x, &down);
         return QPointF(x, -y);
@@ -148,6 +206,19 @@ QPolygonF QGCMapPolygon::_toPolygonF(void) const
     if (_polygonPath.count() > 2) {
         for (int i=0; i<_polygonPath.count(); i++) {
             polygon.append(_pointFFromCoord(_polygonPath[i].value<QGeoCoordinate>()));
+        }
+    }
+
+    return polygon;
+}
+
+QPolygonF QGCMapPolygon::_obstacle_toPolygonF() const
+{
+    QPolygonF polygon;
+
+    if (_obstaclepolygonPath.count() > 2) {
+        for (int i=0; i<_obstaclepolygonPath.count(); i++) {
+            polygon.append(_obstacle_pointFFromCoord(_obstaclepolygonPath[i].value<QGeoCoordinate>()));
         }
     }
 
@@ -266,6 +337,15 @@ void QGCMapPolygon::appendVertex(const QGeoCoordinate& coordinate)
     emit pathChanged();
 }
 
+void QGCMapPolygon::_obstacle_appendVertex(const QGeoCoordinate &coordinate)
+{
+    if(coordinate.isValid()){
+        _obstaclepolygonPath.append(QVariant::fromValue(coordinate));
+        _obstaclepolygonModel.append(new QGCQGeoCoordinate(coordinate, this));
+        emit obstacle_pathChanged();
+    }
+}
+
 void QGCMapPolygon::appendVertices(const QList<QGeoCoordinate>& coordinates)
 {
     QList<QObject*> objects;
@@ -332,6 +412,29 @@ void QGCMapPolygon::_updateCenter(void)
     }
 }
 
+void QGCMapPolygon::_obstacle_updateCenter()
+{
+//    qDebug() << "QGCMapPolygon::_obstacle_updateCenter()"
+//             << _obstacle_ignoreCenterUpdates
+//             << _obstaclepolygonPath.count();
+    if (!_obstacle_ignoreCenterUpdates) {
+        QGeoCoordinate center;
+
+        if (_obstaclepolygonPath.count() > 2) {
+            QPointF centroid(0, 0);
+            QPolygonF polygonF = _obstacle_toPolygonF();
+            for (int i=0; i<polygonF.count(); i++) {
+                centroid += polygonF[i];
+            }
+            center = _obstacle_coordFromPointF(QPointF(centroid.x() / polygonF.count(), centroid.y() / polygonF.count()));
+        }
+        if (_obstacle_center != center) {
+            _obstacle_center = center;
+            emit obstacle_centerChanged(center);
+        }
+    }
+}
+
 void QGCMapPolygon::setCenter(QGeoCoordinate newCenter)
 {
     if (newCenter != _center) {
@@ -364,6 +467,41 @@ void QGCMapPolygon::setCenterDrag(bool centerDrag)
     if (centerDrag != _centerDrag) {
         _centerDrag = centerDrag;
         emit centerDragChanged(centerDrag);
+    }
+}
+
+void QGCMapPolygon::_obstacle_setCenter(QGeoCoordinate newCenter)
+{
+    if (newCenter != _obstacle_center) {
+        _obstacle_ignoreCenterUpdates = true;
+
+        // Adjust polygon vertices to new center
+        double distance = _obstacle_center.distanceTo(newCenter);
+        double azimuth = _obstacle_center.azimuthTo(newCenter);
+
+        for (int i=0; i<obstacle_count(); i++) {
+            QGeoCoordinate oldVertex = _obstaclepolygonPath[i].value<QGeoCoordinate>();
+            QGeoCoordinate newVertex = oldVertex.atDistanceAndAzimuth(distance, azimuth);
+            _obstacle_adjustVertex(i, newVertex);
+        }
+
+        if (_obstacle_centerDrag) {
+            // When center dragging, signals from adjustVertext are not sent. So we need to signal here when all adjusting is complete.
+            emit obstacle_pathChanged();
+        }
+
+        _obstacle_ignoreCenterUpdates = false;
+
+        _obstacle_center = newCenter;
+        emit obstacle_centerChanged(newCenter);
+    }
+}
+
+void QGCMapPolygon::_obstacle_setCenterDrag(bool centerDrag)
+{
+    if (centerDrag != _obstacle_centerDrag) {
+        _obstacle_centerDrag = centerDrag;
+        emit obstacle_centerDragChanged(centerDrag);
     }
 }
 
@@ -540,6 +678,20 @@ void QGCMapPolygon::endReset(void)
     _polygonModel.endReset();
     emit pathChanged();
     emit centerChanged(_center);
+}
+
+void QGCMapPolygon::_obstacle_beginReset()
+{
+    _resetActive = true;
+    _obstaclepolygonModel.beginReset();
+}
+
+void QGCMapPolygon::_obstacle_endReset()
+{
+    _resetActive = false;
+    _obstaclepolygonModel.endReset();
+    emit obstacle_pathChanged();
+    emit obstacle_centerChanged(_obstacle_center);
 }
 
 void QGCMapPolygon::_beginResetIfNotActive(void)

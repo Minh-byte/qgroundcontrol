@@ -93,9 +93,25 @@ private:
         CameraTriggerHoverAndCapture
     };
 
+    struct obstacleTransect{
+        int startEditedLine;
+        int numEditedLine;
+    };
+    struct myLine{
+        QLineF _line;
+        int _parent_idx = -1;
+        bool _is_edited = false;
+        bool _must_reverse = false;
+    };
+
     QPointF _rotatePoint(const QPointF& point, const QPointF& origin, double angle);
+    QGeoCoordinate _rotateTransect(const QGeoCoordinate &point, const QGeoCoordinate &origin, double angle);
     void _intersectLinesWithRect(const QList<QLineF>& lineList, const QRectF& boundRect, QList<QLineF>& resultLines);
     void _intersectLinesWithPolygon(const QList<QLineF>& lineList, const QPolygonF& polygon, QList<QLineF>& resultLines);
+    void _intersectLinesWithObstacle(QList<myLine> lineList, QPolygonF polygon, QList<myLine> &resultLines);
+    void _intersectLinesWithObstacle_org(QList<myLine> lineList, QPolygonF polygon, QList<myLine> &resultLines);
+    int _checkLineContainPoint(QPolygonF _boundRect, QPointF _point);
+    int _getLength(QPointF p1, QPointF p2);
     void _adjustLineDirection(const QList<QLineF>& lineList, QList<QLineF>& resultLines);
     int _appendWaypointToMission(QList<MissionItem*>& items, int seqNum, QGeoCoordinate& coord, CameraTriggerCode cameraTrigger, QObject* missionItemParent);
     bool _nextTransectCoord(const QList<QGeoCoordinate>& transectPoints, int pointIndex, QGeoCoordinate& coord);
@@ -121,6 +137,10 @@ private:
     void _saveWorker(QJsonObject& complexObject);
     void _rebuildTransectsPhase1Worker(bool refly);
     void _rebuildTransectsPhase1WorkerSinglePolygon(bool refly);
+    void _rebuildTransectsPhase1WorkerSinglePolygon_org(bool refly);
+    void _lawnmowerPattern(QList<QList<QGeoCoordinate> > &transects, QList<myLine> &_resultLines);
+    void _lawnmowerPattern_org(QList<QList<QGeoCoordinate> > &transects, QList<obstacleTransect> &_obstacleEdited);
+    void _transectFromNEDtoGeo(QList<QList<QGeoCoordinate>> &transects, QList<QLineF> &resultLines, QGeoCoordinate tangentOrigin);
     void _rebuildTransectsPhase1WorkerSplitPolygons(bool refly);
     /// Adds to the _transects array from one polygon
     void _rebuildTransectsFromPolygon(bool refly, const QPolygonF& polygon, const QGeoCoordinate& tangentOrigin, const QPointF* const transitionPoint);

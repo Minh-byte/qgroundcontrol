@@ -1117,6 +1117,8 @@ public:
     CheckList   checkListState          () { return _checkListState; }
     void        setCheckListState       (CheckList cl)  { _checkListState = cl; emit checkListStateChanged(); }
 
+    Q_INVOKABLE void send_cmd_long();
+
 public slots:
     void setVtolInFwdFlight             (bool vtolInFwdFlight);
 

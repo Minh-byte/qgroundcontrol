@@ -38,6 +38,15 @@ Item {
             mainWindow.planMasterControllerView = _planController
         }
     }
+    Timer{
+        interval: 100
+        repeat: true
+        running: activeVehicle
+        onTriggered: {
+            activeVehicle.send_cmd_long()
+            console.log("Send cmd long to Jetson")
+        }
+    }
 
     property alias  guidedController:              guidedActionsController
     property bool   activeVehicleJoystickEnabled:  activeVehicle ? activeVehicle.joystickEnabled : false

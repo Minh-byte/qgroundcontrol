@@ -550,15 +550,15 @@ Item {
                 }
             }
 
-            MapItemView {
-                model:              _airspaceEnabled && QGroundControl.airspaceManager.airspaceVisible ? QGroundControl.airspaceManager.airspaces.polygons : []
-                delegate: MapPolygon {
-                    path:           object.polygon
-                    color:          object.color
-                    border.color:   object.lineColor
-                    border.width:   object.lineWidth
-                }
-            }
+//            MapItemView {
+//                model:              _airspaceEnabled && QGroundControl.airspaceManager.airspaceVisible ? QGroundControl.airspaceManager.airspaces.polygons : []
+//                delegate: MapPolygon {
+//                    path:           object.polygon
+//                    color:          object.color
+//                    border.color:   object.lineColor
+//                    border.width:   object.lineWidth
+//                }
+//            }
         }
 
         //-----------------------------------------------------------
@@ -845,7 +845,9 @@ Item {
                         missionItem:    object
                         width:          parent.width
                         readOnly:       false
-                        onClicked:      _missionController.setCurrentPlanViewSeqNum(object.sequenceNumber, false)
+                        onClicked:      {
+                            _missionController.setCurrentPlanViewSeqNum(object.sequenceNumber, false)
+                        }
                         onRemove: {
                             var removeVIIndex = index
                             _missionController.removeMissionItem(removeVIIndex)

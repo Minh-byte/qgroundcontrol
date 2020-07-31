@@ -47,11 +47,23 @@ Item {
     property real _zorderCenterHandle:  QGroundControl.zOrderMapItems + 1   // Lowest such that drag or split takes precedence
 
     readonly property string _polygonToolsText: qsTr("Polygon Tools")
-    readonly property string _traceText:        qsTr("Click in the map to add vertices. Click 'Done Tracing' when finished.")
+//    readonly property string _traceText:        qsTr("Click in the map to add vertices. Click 'Done Tracing' when finished.")
+    readonly property string _traceText:        qsTr("Plan field with drone's GPS.")
+    readonly property string _obstacleText:        qsTr("Select type of Obstacle to add.")
+
+    property var    _activeVehicleCoordinate:   activeVehicle ? activeVehicle.coordinate : QtPositioning.coordinate()
+    property var _obstacleGPS
+    on_ActiveVehicleCoordinateChanged: {
+        if (_activeVehicleCoordinate.isValid) {
+            _obstacleGPS = _activeVehicleCoordinate
+        }
+
+    }
 
     function addCommonVisuals() {
         if (_objMgrCommonVisuals.empty) {
             _objMgrCommonVisuals.createObject(polygonComponent, mapControl, true)
+            _objMgrCommonVisuals.createObject(obstaclepolygonComponent, mapControl, true)
         }
     }
 
@@ -61,7 +73,7 @@ Item {
 
     function addEditingVisuals() {
         if (_objMgrEditingVisuals.empty) {
-            _objMgrEditingVisuals.createObjects([ dragHandlesComponent, splitHandlesComponent, centerDragHandleComponent ], mapControl, false /* addToMap */)
+            _objMgrEditingVisuals.createObjects([ dragHandlesComponent, obstacledragHandlesComponent, splitHandlesComponent, centerDragHandleComponent, obstaclecenterDragHandleComponent ], mapControl, false /* addToMap */)
         }
     }
 
@@ -104,6 +116,7 @@ Item {
         // Initial polygon has max width and height of 3000 meters
         var halfWidthMeters =   Math.min(topLeftCoord.distanceTo(topRightCoord), 3000) / 2
         var halfHeightMeters =  Math.min(topLeftCoord.distanceTo(bottomLeftCoord), 3000) / 2
+
         topLeftCoord =      centerCoord.atDistanceAndAzimuth(halfWidthMeters, -90).atDistanceAndAzimuth(halfHeightMeters, 0)
         topRightCoord =     centerCoord.atDistanceAndAzimuth(halfWidthMeters, 90).atDistanceAndAzimuth(halfHeightMeters, 0)
         bottomLeftCoord =   centerCoord.atDistanceAndAzimuth(halfWidthMeters, -90).atDistanceAndAzimuth(halfHeightMeters, 180)
@@ -111,7 +124,47 @@ Item {
 
         return [ topLeftCoord, topRightCoord, bottomRightCoord, bottomLeftCoord, centerCoord  ]
     }
+    function defaultObstacleVertices(_isResize) {
+        var rect
+        var centerCoord
+        var topLeftCoord
+        var topRightCoord
+        var bottomLeftCoord
+        var bottomRightCoord
+        var halfWidthMeters
+        var halfHeightMeters
 
+        if(_isResize){
+            centerCoord = mapPolygon.obstacle_center
+            // Initial polygon has max width and height of 30 meters
+            halfWidthMeters =   _obstacleSize / 2
+            halfHeightMeters =  _obstacleSize / 2
+        }else{
+            // Initial polygon is inset to take 2/3rds space
+            rect = Qt.rect(mapControl.centerViewport.x, mapControl.centerViewport.y, mapControl.centerViewport.width, mapControl.centerViewport.height)
+            rect.x += (rect.width * 0.25) / 2
+            rect.y += (rect.height * 0.25) / 2
+            rect.width *= 0.75
+            rect.height *= 0.75
+
+            centerCoord =       mapControl.toCoordinate(Qt.point(rect.x + (rect.width / 2), rect.y + (rect.height / 2)),   false /* clipToViewPort */)
+            topLeftCoord =      mapControl.toCoordinate(Qt.point(rect.x, rect.y),                                          false /* clipToViewPort */)
+            topRightCoord =     mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y),                             false /* clipToViewPort */)
+            bottomLeftCoord =   mapControl.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */)
+            bottomRightCoord =  mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */)
+
+            // Initial polygon has max width and height of 30 meters
+            halfWidthMeters =   Math.min(topLeftCoord.distanceTo(topRightCoord), _obstacleSize) / 2
+            halfHeightMeters =  Math.min(topLeftCoord.distanceTo(bottomLeftCoord), _obstacleSize) / 2
+        }
+
+        topLeftCoord =      centerCoord.atDistanceAndAzimuth(halfWidthMeters, -90).atDistanceAndAzimuth(halfHeightMeters, 0)
+        topRightCoord =     centerCoord.atDistanceAndAzimuth(halfWidthMeters, 90).atDistanceAndAzimuth(halfHeightMeters, 0)
+        bottomLeftCoord =   centerCoord.atDistanceAndAzimuth(halfWidthMeters, -90).atDistanceAndAzimuth(halfHeightMeters, 180)
+        bottomRightCoord =  centerCoord.atDistanceAndAzimuth(halfWidthMeters, 90).atDistanceAndAzimuth(halfHeightMeters, 180)
+
+        return [ bottomLeftCoord, topLeftCoord, topRightCoord, bottomRightCoord, centerCoord  ]
+    }
     /// Reset polygon back to initial default
     function _resetPolygon() {
         mapPolygon.beginReset()
@@ -121,6 +174,18 @@ Item {
             mapPolygon.appendVertex(initialVertices[i])
         }
         mapPolygon.endReset()
+        _circleMode = false
+    }
+    property bool _obstacleIsRect: false
+    property int _obstacleSize: 20
+    function _resetObstacleRect(_isResie) {
+        var initialVertices = defaultObstacleVertices(_isResie)
+        mapPolygon._obstacle_beginReset()
+        mapPolygon._obstacle_clear()
+        for (var i=0; i<4; i++) {
+            mapPolygon._obstacle_appendVertex(initialVertices[i])
+        }
+        mapPolygon._obstacle_endReset()
         _circleMode = false
     }
 
@@ -195,10 +260,20 @@ Item {
         onTraceModeChanged: {
             if (mapPolygon.traceMode) {
                 _instructionText = _traceText
+                // add trace by GPS, no use mouse click
                 _objMgrTraceVisuals.createObject(traceMouseAreaComponent, mapControl, false)
             } else {
                 _instructionText = _polygonToolsText
                 _objMgrTraceVisuals.destroyObjects()
+            }
+        }
+        onObstacleModeChanged:{
+            if (mapPolygon.obstacleMode) {
+                _instructionText = _obstacleText
+                _objMgrObstacleVisuals.createObject(obstacleMouseAreaComponent, mapControl, false)
+            } else {
+                _instructionText = _polygonToolsText
+                _objMgrObstacleVisuals.destroyObjects()
             }
         }
     }
@@ -213,6 +288,7 @@ Item {
     QGCDynamicObjectManager { id: _objMgrToolVisuals }
     QGCDynamicObjectManager { id: _objMgrEditingVisuals }
     QGCDynamicObjectManager { id: _objMgrTraceVisuals }
+    QGCDynamicObjectManager { id: _objMgrObstacleVisuals }
     QGCDynamicObjectManager { id: _objMgrCircleVisuals }
 
     QGCPalette { id: qgcPal }
@@ -282,11 +358,23 @@ Item {
         id: polygonComponent
 
         MapPolygon {
-            color:          interiorColor
-            opacity:        interiorOpacity
+//            color:          interiorColor
+            color:          "green"
+            opacity:        interiorOpacity * 0.5
             border.color:   borderColor
             border.width:   borderWidth
             path:           mapPolygon.path
+        }
+    }
+    Component {
+        id: obstaclepolygonComponent
+
+        MapPolygon {
+            color:          "red"
+            opacity:        0.1
+            border.color:   borderColor
+            border.width:   borderWidth
+            path:           mapPolygon.obstacle_path
         }
     }
 
@@ -363,8 +451,34 @@ Item {
 
             onItemCoordinateChanged: {
                 if (_creationComplete) {
-                    // During component creation some bad coordinate values got through which screws up draw
+                    // During component creation some bad coordinate values got through which screws up draw             
                     mapPolygon.adjustVertex(polygonVertex, itemCoordinate)
+                }
+            }
+
+            onClicked: menu.popupVertex(polygonVertex)
+        }
+    }
+    Component {
+        id: obstacledragAreaComponent
+
+        MissionItemIndicatorDrag {
+            id:         dragArea
+            mapControl: _root.mapControl
+            z:          _zorderDragHandle
+            visible:    !_circleMode
+            onDragStop: mapPolygon.verifyClockwiseWinding()
+
+            property int polygonVertex
+
+            property bool _creationComplete: false
+
+            Component.onCompleted: _creationComplete = true
+
+            onItemCoordinateChanged: {
+                if (_creationComplete) {
+                    // During component creation some bad coordinate values got through which screws up draw
+                    mapPolygon._obstacle_adjustVertex(polygonVertex, itemCoordinate)
                 }
             }
 
@@ -424,7 +538,29 @@ Item {
             }
         }
     }
+    Component {
+        id: obstacledragHandleComponent
 
+        MapQuickItem {
+            id:             mapQuickItem
+            anchorPoint.x:  dragHandle.width  / 2
+            anchorPoint.y:  dragHandle.height / 2
+            z:              _zorderDragHandle
+            visible:        !_circleMode
+
+            property int polygonVertex
+
+            sourceItem: Rectangle {
+                id:             dragHandle
+                width:          ScreenTools.defaultFontPixelHeight * 1.25
+                height:         width
+                radius:         width * 0.5
+                color:          Qt.rgba(1,0,0,0.8)
+                border.color:   Qt.rgba(0,0,0,0.25)
+                border.width:   1
+            }
+        }
+    }
     // Add all polygon vertex drag handles to the map
     Component {
         id: dragHandlesComponent
@@ -433,7 +569,7 @@ Item {
             model: mapPolygon.pathModel
 
             delegate: Item {
-                property var _visuals: [ ]
+                property var _visuals: [ ] // use for destruction
 
                 Component.onCompleted: {
                     var dragHandle = dragHandleComponent.createObject(mapControl)
@@ -441,6 +577,35 @@ Item {
                     dragHandle.polygonVertex = Qt.binding(function() { return index })
                     mapControl.addMapItem(dragHandle)
                     var dragArea = dragAreaComponent.createObject(mapControl, { "itemIndicator": dragHandle, "itemCoordinate": object.coordinate })
+                    dragArea.polygonVertex = Qt.binding(function() { return index })
+                    _visuals.push(dragHandle)
+                    _visuals.push(dragArea)
+                }
+
+                Component.onDestruction: {
+                    for (var i=0; i<_visuals.length; i++) {
+                        _visuals[i].destroy()
+                    }
+                    _visuals = [ ]
+                }
+            }
+        }
+    }
+    Component {
+        id: obstacledragHandlesComponent
+
+        Repeater {
+            model: mapPolygon.obstaclepathModel
+
+            delegate: Item {
+                property var _visuals: [ ] // use for destruction
+
+                Component.onCompleted: {
+                    var dragHandle = obstacledragHandleComponent.createObject(mapControl)
+                    dragHandle.coordinate = Qt.binding(function() { return object.coordinate })
+                    dragHandle.polygonVertex = Qt.binding(function() { return index })
+                    mapControl.addMapItem(dragHandle)
+                    var dragArea = obstacledragAreaComponent.createObject(mapControl, { "itemIndicator": dragHandle, "itemCoordinate": object.coordinate })
                     dragArea.polygonVertex = Qt.binding(function() { return index })
                     _visuals.push(dragHandle)
                     _visuals.push(dragArea)
@@ -494,7 +659,17 @@ Item {
             onDragStop:                 mapPolygon.centerDrag = false
         }
     }
+    Component {
+        id: obstaclecenterDragAreaComponent
 
+        MissionItemIndicatorDrag {
+            mapControl:                 _root.mapControl
+            z:                          _zorderCenterHandle
+            onItemCoordinateChanged:    mapPolygon.obstacle_center = itemCoordinate
+            onDragStart:                mapPolygon.obstacle_centerDrag = true
+            onDragStop:                 mapPolygon.obstacle_centerDrag = false
+        }
+    }
     Component {
         id: centerDragHandleComponent
 
@@ -507,6 +682,26 @@ Item {
                 dragHandle.coordinate = Qt.binding(function() { return mapPolygon.center })
                 mapControl.addMapItem(dragHandle)
                 dragArea = centerDragAreaComponent.createObject(mapControl, { "itemIndicator": dragHandle, "itemCoordinate": mapPolygon.center })
+            }
+
+            Component.onDestruction: {
+                dragHandle.destroy()
+                dragArea.destroy()
+            }
+        }
+    }
+    Component {
+        id: obstaclecenterDragHandleComponent
+
+        Item {
+            property var dragHandle
+            property var dragArea
+
+            Component.onCompleted: {
+                dragHandle = centerDragHandle.createObject(mapControl)
+                dragHandle.coordinate = Qt.binding(function() { return mapPolygon.obstacle_center })
+                mapControl.addMapItem(dragHandle)
+                dragArea = obstaclecenterDragAreaComponent.createObject(mapControl, { "itemIndicator": dragHandle, "itemCoordinate": mapPolygon.obstacle_center })
             }
 
             Component.onDestruction: {
@@ -529,20 +724,22 @@ Item {
             QGCButton {
                 _horizontalPadding: 0
                 text:               qsTr("Basic")
-                visible:            !mapPolygon.traceMode
+                visible:            !mapPolygon.traceMode && !mapPolygon.obstacleMode
                 onClicked:          _resetPolygon()
             }
 
             QGCButton {
                 _horizontalPadding: 0
                 text:               qsTr("Circular")
-                visible:            !mapPolygon.traceMode
+                visible:            !mapPolygon.traceMode && !mapPolygon.obstacleMode
                 onClicked:          _resetCircle()
             }
 
             QGCButton {
                 _horizontalPadding: 0
-                text:               mapPolygon.traceMode ? qsTr("Done Tracing") : qsTr("Trace")
+                visible:            !mapPolygon.obstacleMode
+//                text:               mapPolygon.traceMode ? qsTr("Done Tracing") : qsTr("Trace")
+                text:               mapPolygon.traceMode ? qsTr("Done") : qsTr("Plan")
                 onClicked: {
                     if (mapPolygon.traceMode) {
                         if (mapPolygon.count < 3) {
@@ -553,7 +750,89 @@ Item {
                         _saveCurrentVertices()
                         _circleMode = false
                         mapPolygon.traceMode = true
-                        mapPolygon.clear();
+                        mapPolygon.clear()
+                    }
+                }
+            }
+            Item{
+                visible:            mapPolygon.traceMode && !mapPolygon.obstacleMode
+                height: parent.height
+                width: 20
+            }
+            QGCButton {
+                _horizontalPadding: 0
+                visible:            mapPolygon.traceMode && !mapPolygon.obstacleMode
+                text:               qsTr("Add Waypoint")
+                onClicked: {
+                    mapPolygon.appendVertex(_obstacleGPS)
+                }
+            }
+            QGCButton {
+                _horizontalPadding: 0
+                visible:            mapPolygon.traceMode && !mapPolygon.obstacleMode
+                text:               qsTr("Add Obstacle")
+                onClicked: {
+                    mapPolygon._obstacle_appendVertex(_obstacleGPS)
+                }
+            }
+
+            QGCButton {
+                _horizontalPadding: 0
+                visible:            !mapPolygon.traceMode
+                text:               mapPolygon.obstacleMode ? qsTr("End Obstacle") : qsTr("Obstacle")
+                onClicked: {
+                    if (mapPolygon.obstacleMode) {
+//                        if (mapPolygon.count < 3) {
+//                            _restorePreviousVertices()
+//                        }
+                        mapPolygon.obstacleMode = false
+                    } else {
+//                        _saveCurrentVertices()
+                        _circleMode = false
+                        mapPolygon.obstacleMode = true
+                        mapPolygon._obstacle_clear()
+                    }
+                }
+            }
+            Item{
+                visible:            !mapPolygon.traceMode && mapPolygon.obstacleMode
+                height: parent.height
+                width: 20
+            }
+            QGCButton {
+                _horizontalPadding: 0
+                visible:            !mapPolygon.traceMode && mapPolygon.obstacleMode
+                text:               qsTr("Rectangle")
+                onClicked: {
+                    _obstacleIsRect = true
+                    _resetObstacleRect(false)
+                }
+            }
+            QGCButton {
+                _horizontalPadding: 0
+                visible:            !mapPolygon.traceMode && mapPolygon.obstacleMode
+                text:               qsTr("Circle")
+                onClicked: {
+                    _obstacleIsRect = false
+                }
+            }
+            Item{
+                visible:            !mapPolygon.traceMode && mapPolygon.obstacleMode
+                height: parent.height
+                width: 20
+            }
+            QGCSlider{
+                id:                 obstacleSize
+                visible:            !mapPolygon.traceMode && mapPolygon.obstacleMode
+                minimumValue:       20
+                maximumValue:       500
+                stepSize:           1
+                value:              _obstacleSize
+                onValueChanged: {
+                    if(mapPolygon.obstacle_count <= 0) return
+                    if(_obstacleIsRect){
+                        _obstacleSize = value
+                        _resetObstacleRect(true)
                     }
                 }
             }
@@ -562,7 +841,7 @@ Item {
                 _horizontalPadding: 0
                 text:               qsTr("Load KML/SHP...")
                 onClicked:          kmlOrSHPLoadDialog.openForLoad()
-                visible:            !mapPolygon.traceMode
+                visible:            !mapPolygon.traceMode && !mapPolygon.obstacleMode
             }
         }
     }
@@ -579,6 +858,22 @@ Item {
             onClicked: {
                 if (mouse.button === Qt.LeftButton) {
                     mapPolygon.appendVertex(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
+                }
+            }
+        }
+    }
+    Component {
+        id:  obstacleMouseAreaComponent
+
+        MouseArea {
+            anchors.fill:       mapControl
+            preventStealing:    true
+            z:                  QGroundControl.zOrderMapItems + 1   // Over item indicators
+
+            onClicked: {
+                if (mouse.button === Qt.LeftButton) {
+//                    console.log("_obstacle_appendVertex " + mapControl.toCoordinate(Qt.point(mouse.x, mouse.y)))
+                    mapPolygon._obstacle_appendVertex(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
                 }
             }
         }

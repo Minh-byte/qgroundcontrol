@@ -89,6 +89,7 @@ QGCViewDialog {
             if (_allowForceSave) {
                 forceSave.visible = true
             }
+            setFocus = true
         }
     }
 

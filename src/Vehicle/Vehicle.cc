@@ -269,6 +269,7 @@ Vehicle::Vehicle(LinkInterface*             link,
         _geoFenceManagerInitialRequestSent = true;
         _rallyPointManagerInitialRequestSent = true;
     } else {
+qDebug() << "MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES";
         sendMavCommand(MAV_COMP_ID_ALL,
                        MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES,
                        false,                                   // No error shown if fails
@@ -571,6 +572,32 @@ void Vehicle::prepareDelete()
     }
 }
 
+void Vehicle::send_cmd_long()
+{
+    mavlink_message_t       msg;
+    mavlink_command_long_t  cmd;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.target_system =     1;
+    cmd.target_component =  25;
+    cmd.command =           31010;
+    cmd.confirmation =      0;
+    cmd.param1 =            1;
+    cmd.param2 =            2;
+    cmd.param3 =            0;
+    cmd.param4 =            0;
+    cmd.param5 =            0;
+    cmd.param6 =            0;
+    cmd.param7 =            0;
+    mavlink_msg_command_long_encode_chan(_mavlink->getSystemId(),
+                                         _mavlink->getComponentId(),
+                                         priorityLink()->mavlinkChannel(),
+                                         &msg,
+                                         &cmd);
+
+    sendMessageOnLink(priorityLink(), msg);
+}
+
 void Vehicle::_offlineFirmwareTypeSettingChanged(QVariant value)
 {
     _firmwareType = static_cast<MAV_AUTOPILOT>(value.toInt());
@@ -804,6 +831,7 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
         break;
     case MAVLINK_MSG_ID_CAMERA_IMAGE_CAPTURED:
         _handleCameraImageCaptured(message);
+        qDebug() << "MAVLINK_MSG_ID_CAMERA_IMAGE_CAPTURED" << "_handleCameraImageCaptured(message)";
         break;
     case MAVLINK_MSG_ID_ADSB_VEHICLE:
         _handleADSBVehicle(message);
@@ -860,6 +888,7 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
 #if !defined(NO_ARDUPILOT_DIALECT)
     case MAVLINK_MSG_ID_CAMERA_FEEDBACK:
         _handleCameraFeedback(message);
+//        qDebug() << "MAVLINK_MSG_ID_CAMERA_FEEDBACK" << "_handleCameraFeedback(message)";
         break;
     case MAVLINK_MSG_ID_WIND:
         _handleWind(message);

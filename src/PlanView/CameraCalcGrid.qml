@@ -130,11 +130,12 @@ Column {
             Layout.fillWidth:   true
         }
 
-        QGCLabel { text: frontalDistanceLabel }
-        FactTextField {
-            Layout.fillWidth:   true
-            fact:               cameraCalc.adjustedFootprintFrontal
-        }
+        // in spray mode, do not show camera distance trigger
+//        QGCLabel { text: frontalDistanceLabel }
+//        FactTextField {
+//            Layout.fillWidth:   true
+//            fact:               cameraCalc.adjustedFootprintFrontal
+//        }
 
         QGCLabel { text: sideDistanceLabel }
         FactTextField {

@@ -31,6 +31,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         //-- Full screen on mobile or tiny screens
+//        ScreenTools.isMobile = true
         if(ScreenTools.isMobile || Screen.height / ScreenTools.realPixelDensity < 120) {
             mainWindow.showFullScreen()
         } else {

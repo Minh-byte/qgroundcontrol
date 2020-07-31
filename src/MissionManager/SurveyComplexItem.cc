@@ -506,6 +506,17 @@ QPointF SurveyComplexItem::_rotatePoint(const QPointF& point, const QPointF& ori
     return rotated;
 }
 
+QGeoCoordinate SurveyComplexItem::_rotateTransect(const QGeoCoordinate &point, const QGeoCoordinate &origin, double angle)
+{
+    QGeoCoordinate rotated;
+    double radians = (M_PI / 180.0) * -angle;
+
+    rotated.setLongitude(((point.longitude() - origin.longitude()) * cos(radians)) - ((point.latitude() - origin.latitude()) * sin(radians)) + origin.longitude());
+    rotated.setLatitude(((point.longitude() - origin.longitude()) * sin(radians)) + ((point.latitude() - origin.latitude()) * cos(radians)) + origin.latitude());
+
+    return rotated;
+}
+
 void SurveyComplexItem::_intersectLinesWithRect(const QList<QLineF>& lineList, const QRectF& boundRect, QList<QLineF>& resultLines)
 {
     QLineF topLine      (boundRect.topLeft(),       boundRect.topRight());
@@ -601,10 +612,439 @@ void SurveyComplexItem::_intersectLinesWithPolygon(const QList<QLineF>& lineList
                     }
                 }
             }
-
             resultLines += QLineF(firstPoint, secondPoint);
         }
     }
+}
+void SurveyComplexItem::_intersectLinesWithObstacle_org(QList<myLine> lineList, QPolygonF polygon, QList<myLine> &resultLines)
+{
+    //    qDebug() << "Obstacle cal, total line:" << lineList.count();
+        resultLines.clear();
+        QList<myLine> _secondLine_Listbuf;
+
+        for (int i=0; i<lineList.count(); i++) {
+            myLine myline = lineList[i];
+            QLineF line = lineList[i]._line;
+            QList<QPointF> intersections;
+
+            // Intersect the line with all the polygon edges
+            for (int j=0; j<polygon.count()-1; j++) {
+                QPointF intersectPoint;
+                QLineF polygonLine = QLineF(polygon[j], polygon[j+1]);
+                if (line.intersect(polygonLine, &intersectPoint) == QLineF::BoundedIntersection) {
+                    if (!intersections.contains(intersectPoint)) {
+                        intersections.append(intersectPoint);
+                    }
+                }
+            }
+
+            // We now have one or more intersection points all along the same line. Find the two
+            // which are furthest away from each other to form the transect.
+            if (intersections.count() > 1) {
+                QPointF firstPoint;
+                QPointF secondPoint;
+                double currentMaxDistance = 0;
+
+                for (int i=0; i<intersections.count(); i++) {
+                    for (int j=0; j<intersections.count(); j++) {
+                        QLineF lineTest(intersections[i], intersections[j]);
+                        \
+                        double newMaxDistance = lineTest.length();
+                        if (newMaxDistance > currentMaxDistance) {
+                            firstPoint = intersections[i];
+                            secondPoint = intersections[j];
+                            currentMaxDistance = newMaxDistance;
+                        }
+                    }
+                }
+
+                QLineF buf = line;
+                QLineF obLine;
+                double _spacing = 0.0;
+
+                // process spacing and direction to avoid obstacle
+                //------------------------------------------------------
+                //  P2                          P3
+                //  -------------1----------------
+                //  |                           |
+                //  |                           |
+                //  |0                         2|
+                //  |                           |
+                //  |                           |
+                //  -------------3----------------
+                //  P1                          P4
+                //------------------------------------------------------
+
+                QPointF P1 = polygon[0];
+                QPointF P2 = polygon[1];
+                QPointF P3 = polygon[2];
+                QPointF P4 = polygon[3];
+                QPointF _firstPoint, _secondPoint;
+
+                int _buf_1 = _checkLineContainPoint(polygon, firstPoint);
+                int _buf_2 = _checkLineContainPoint(polygon, secondPoint);
+                if(_buf_1 == 0){
+    //                qDebug() << "firstPoint in line P1P2";
+                    if(_buf_2 == 1) {
+    //                    qDebug() << "_secondPoint in line P2P3";
+                        _firstPoint = P2; _secondPoint = P2;
+                    }
+                    else if(_buf_2==2) {
+    //                    qDebug() << "_secondPoint in line P3P4";
+                        _firstPoint = P2; _secondPoint = P3;
+                    }
+                    else if(_buf_2==3) {
+    //                    qDebug() << "_secondPoint in line P4P1";
+                        _firstPoint = P1; _secondPoint = P1;
+                    }
+                }else if(_buf_1 == 1){
+    //                qDebug() << "firstPoint in line P2P3";
+                    if(_buf_2 ==2){
+    //                    qDebug() << "_secondPoint in line P3P4";
+                        _firstPoint = P3; _secondPoint = P3;
+                    }
+                    else if(_buf_2==3){
+    //                    qDebug() << "_secondPoint in line P4P1";
+                        if((_getLength(P2, firstPoint) + _getLength(secondPoint, P1))
+                                > ((_getLength(firstPoint,P3) + _getLength(secondPoint,P4)))){
+                            _firstPoint=P3; _secondPoint=P4;
+                        }
+                        else{
+                            _firstPoint=P2; _secondPoint=P1;
+                        }
+                    }
+                    else if(_buf_2==0){
+    //                    qDebug() << "_secondPoint in line P1P2";
+                        _firstPoint=P2; _secondPoint=P2;
+                    }
+                }else if(_buf_1 == 2){
+    //                qDebug() << "firstPoint in line P3P4";
+                    if(_buf_2==3){
+    //                    qDebug() << "_secondPoint in line P4P1";
+                        _firstPoint = P4; _secondPoint = P4;}
+                    else if(_buf_2==0){
+    //                    qDebug() << "_secondPoint in line P1P2";
+                        _firstPoint=P4; _secondPoint=P1;}
+                    else if(_buf_2==1){
+    //                    qDebug() << "_secondPoint in line P2P3";
+                        _firstPoint=P3; _secondPoint=P3;}
+                }else if(_buf_1 == 3){
+    //                qDebug() << "firstPoint in line P4P1";
+                    if(_buf_2==0){
+    //                    qDebug() << "_secondPoint in line P1P2";
+                        _firstPoint = P1; _secondPoint = P1;}
+                    else if(_buf_2==1){
+    //                    qDebug() << "_secondPoint in line P2P3";
+                        _firstPoint=P1; _secondPoint=P2;}
+                    else if(_buf_2==2){
+    //                    qDebug() << "_secondPoint in line P3P4";
+                        _firstPoint=P4; _secondPoint=P4;}
+                }else{
+                    qDebug() << "TP0";
+                }
+
+                // check firtPoint position
+                QLineF _p1_first_line(line.p1(), firstPoint);
+                QLineF _p1_second_line(line.p1(), secondPoint);
+                bool _tp1 = (_p1_first_line.length() < _p1_second_line.length()) ? true : false;
+
+                // add new lines to avoid obstacle
+
+                if(_tp1) line.setP2(firstPoint);
+                else line.setP2(secondPoint);
+                myLine _line;
+                _line._line = line;
+                _line._is_edited = true;
+                _line._parent_idx = myline._parent_idx;
+                if(myline._parent_idx%2) _line._must_reverse = true;
+                resultLines.append(_line);
+
+
+                double _angle = (-line.angle() - 90);
+                double radians = (M_PI / 180.0) * (_angle);
+                if(_tp1) obLine.setPoints(_firstPoint, _secondPoint);
+                else  obLine.setPoints(_secondPoint, _firstPoint);
+                obLine.translate(_spacing * (cos(radians)),_spacing*(sin(radians)));
+                myLine _obLine;
+                _obLine._line = obLine;
+                _obLine._parent_idx = myline._parent_idx;
+                _obLine._is_edited = true;
+                if(myline._parent_idx%2) _obLine._must_reverse = true;
+                resultLines.append(_obLine);
+
+                if(_tp1) buf.setP1(secondPoint);
+                else buf.setP1(firstPoint);
+                myLine _buf;
+                _buf._line=buf;
+                _buf._parent_idx = myline._parent_idx;
+                _buf._is_edited = true;
+                if(myline._parent_idx%2) _buf._must_reverse = true;
+                resultLines.append(_buf);
+
+                if(myline._parent_idx % 2) resultLines.swap(resultLines.length() - 1, resultLines.length() - 3);
+            }else{
+                resultLines.append(myline);
+            }
+        }
+}
+void SurveyComplexItem::_intersectLinesWithObstacle(QList<myLine> lineList, QPolygonF polygon, QList<myLine> &resultLines)
+{
+//    qDebug() << "Obstacle cal, total line:" << lineList.count();
+    resultLines.clear();
+
+    QList<myLine> _secondLine_Listbuf;
+    myLine _transactionLine;
+    QPointF _transactionPoint;
+    myLine _firstLine_buf;
+    myLine _secondLine_buf;
+    bool _init_transaction = false;
+    int _firstLine_end = 0;
+    int _startEditLine = -1;
+
+    for (int i=0; i<lineList.count(); i++) {
+        myLine myline = lineList[i];
+        QLineF line = lineList[i]._line;
+        QList<QPointF> intersections;
+
+        // Intersect the line with all the polygon edges
+        for (int j=0; j<polygon.count()-1; j++) {
+            QPointF intersectPoint;
+            QLineF polygonLine = QLineF(polygon[j], polygon[j+1]);
+            if (line.intersect(polygonLine, &intersectPoint) == QLineF::BoundedIntersection) {
+                if (!intersections.contains(intersectPoint)) {
+                    intersections.append(intersectPoint);
+                }
+            }
+        }
+
+        // We now have one or more intersection points all along the same line. Find the two
+        // which are furthest away from each other to form the transect.
+        if (intersections.count() > 1) {
+            QPointF firstPoint;
+            QPointF secondPoint;
+            double currentMaxDistance = 0;
+
+            for (int i=0; i<intersections.count(); i++) {
+                for (int j=0; j<intersections.count(); j++) {
+                    QLineF lineTest(intersections[i], intersections[j]);
+                    \
+                    double newMaxDistance = lineTest.length();
+                    if (newMaxDistance > currentMaxDistance) {
+                        firstPoint = intersections[i];
+                        secondPoint = intersections[j];
+                        currentMaxDistance = newMaxDistance;
+                    }
+                }
+            }
+
+            QLineF buf = line;
+            QLineF obLine;
+            double _spacing = 0.0;
+
+            // process spacing and direction to avoid obstacle
+            //------------------------------------------------------
+            //  P2                          P3
+            //  -------------1----------------
+            //  |                           |
+            //  |                           |
+            //  |0                         2|
+            //  |                           |
+            //  |                           |
+            //  -------------3----------------
+            //  P1                          P4
+            //------------------------------------------------------
+
+            QPointF P1 = polygon[0];
+            QPointF P2 = polygon[1];
+            QPointF P3 = polygon[2];
+            QPointF P4 = polygon[3];
+            QPointF _firstPoint, _secondPoint;
+
+            int _buf_1 = _checkLineContainPoint(polygon, firstPoint);
+            int _buf_2 = _checkLineContainPoint(polygon, secondPoint);
+            if(_buf_1 == 0){
+//                qDebug() << "firstPoint in line P1P2";
+                if(_buf_2 == 1) {
+//                    qDebug() << "_secondPoint in line P2P3";
+                    _firstPoint = P2; _secondPoint = P2;
+                }
+                else if(_buf_2==2) {
+//                    qDebug() << "_secondPoint in line P3P4";
+                    _firstPoint = P2; _secondPoint = P3;
+                }
+                else if(_buf_2==3) {
+//                    qDebug() << "_secondPoint in line P4P1";
+                    _firstPoint = P1; _secondPoint = P1;
+                }
+            }else if(_buf_1 == 1){
+//                qDebug() << "firstPoint in line P2P3";
+                if(_buf_2 ==2){
+//                    qDebug() << "_secondPoint in line P3P4";
+                    _firstPoint = P3; _secondPoint = P3;
+                }
+                else if(_buf_2==3){
+//                    qDebug() << "_secondPoint in line P4P1";
+                    if((_getLength(P2, firstPoint) + _getLength(secondPoint, P1))
+                            > ((_getLength(firstPoint,P3) + _getLength(secondPoint,P4)))){
+                        _firstPoint=P3; _secondPoint=P4;
+                    }
+                    else{
+                        _firstPoint=P2; _secondPoint=P1;
+                    }
+                }
+                else if(_buf_2==0){
+//                    qDebug() << "_secondPoint in line P1P2";
+                    _firstPoint=P2; _secondPoint=P2;
+                }
+            }else if(_buf_1 == 2){
+//                qDebug() << "firstPoint in line P3P4";
+                if(_buf_2==3){
+//                    qDebug() << "_secondPoint in line P4P1";
+                    _firstPoint = P4; _secondPoint = P4;
+                }
+                else if(_buf_2==0){
+//                    qDebug() << "_secondPoint in line P1P2";
+                    _firstPoint=P4; _secondPoint=P1;
+                }
+                else if(_buf_2==1){
+//                    qDebug() << "_secondPoint in line P2P3";
+                    _firstPoint=P3; _secondPoint=P3;
+                }
+            }else if(_buf_1 == 3){
+//                qDebug() << "firstPoint in line P4P1";
+                if(_buf_2==0){
+//                    qDebug() << "_secondPoint in line P1P2";
+                    _firstPoint = P1; _secondPoint = P1;
+                }
+                else if(_buf_2==1){
+//                    qDebug() << "_secondPoint in line P2P3";
+                    _firstPoint=P1; _secondPoint=P2;
+                }
+                else if(_buf_2==2){
+//                    qDebug() << "_secondPoint in line P3P4";
+                    _firstPoint=P4; _secondPoint=P4;
+                }
+            }else{
+                qDebug() << "TP0";
+            }
+
+            // check firtPoint position
+            QLineF _p1_first_line(line.p1(), firstPoint);
+            QLineF _p1_second_line(line.p1(), secondPoint);
+            bool _tp1 = (_p1_first_line.length() < _p1_second_line.length()) ? true : false;
+
+            // add new lines to avoid obstacle
+
+            if(_tp1) line.setP2(firstPoint);
+            else line.setP2(secondPoint);
+            myLine _line;
+            _line._line = line;
+            _line._is_edited = true;
+            _line._parent_idx = myline._parent_idx;
+            if(myline._parent_idx%2) _line._must_reverse = true;
+//            resultLines.append(_line);
+            _firstLine_buf = _line;
+
+//            double _angle = (-line.angle() - 90);
+//            double radians = (M_PI / 180.0) * (_angle);
+//            if(_tp1) obLine.setPoints(_firstPoint, _secondPoint);
+//            else  obLine.setPoints(_secondPoint, _firstPoint);
+//            obLine.translate(_spacing * (cos(radians)),_spacing*(sin(radians)));
+//            myLine _obLine;
+//            _obLine._line = obLine;
+//            _obLine._parent_idx = myline._parent_idx;
+//            _obLine._is_edited = true;
+//            if(myline._parent_idx%2) _obLine._must_reverse = true;
+//            resultLines.append(_obLine);
+
+            if(_tp1) buf.setP1(secondPoint);
+            else buf.setP1(firstPoint);
+            myLine _buf;
+            _buf._line=buf;
+            _buf._parent_idx = myline._parent_idx;
+            _buf._is_edited = true;
+            if(myline._parent_idx%2) _buf._must_reverse = true;
+//            resultLines.append(_buf);
+            _secondLine_buf = (_buf);
+
+            if(_startEditLine == -1) _startEditLine=myline._parent_idx;
+            if (!(_startEditLine % 2)){
+                resultLines.append(_firstLine_buf);
+                _secondLine_Listbuf.append(_secondLine_buf);
+
+                if(!_init_transaction){
+                    _transactionPoint = _firstLine_buf._line.p2();
+                }
+            }else{
+
+                resultLines.append(_secondLine_buf);
+                _secondLine_Listbuf.append(_firstLine_buf);
+
+                if(!_init_transaction){
+                    _transactionPoint = _secondLine_buf._line.p2();
+                }
+            }
+            _firstLine_end = resultLines.length();
+
+            _init_transaction = true;
+
+        }else{
+            resultLines.append(myline);
+        }
+    }
+
+    if(_secondLine_Listbuf.length() > 0){
+        _transactionLine._line.setPoints(_transactionPoint, _transactionPoint);
+        resultLines.insert(_firstLine_end, _transactionLine);
+        _firstLine_end += 1;
+    }
+
+
+    for(int i =0; i < _secondLine_Listbuf.length(); i++){
+        resultLines.insert(_firstLine_end + i, _secondLine_Listbuf[i]);
+    }
+}
+
+int SurveyComplexItem::_checkLineContainPoint(QPolygonF _boundRect, QPointF _point)
+{
+#if 0
+    QLineF L1(_boundRect.topLeft(), _boundRect.bottomLeft());
+    QLineF L2(_boundRect.bottomLeft(), _boundRect.bottomRight());
+    QLineF L3(_boundRect.bottomRight(), _boundRect.topRight());
+    QLineF L4(_boundRect.topRight(), _boundRect.topLeft());
+#else
+    if(_boundRect.count() < 5){
+        QLineF _line(_boundRect[2], _boundRect[3]);
+        _boundRect.append(_line.center());
+        _boundRect[4] = _boundRect[3];
+        _boundRect[3] = _line.center();
+
+    }
+    QLineF L1(_boundRect[0], _boundRect[1]);
+    QLineF L2(_boundRect[1], _boundRect[2]);
+    QLineF L3(_boundRect[2], _boundRect[3]);
+    QLineF L4(_boundRect[3], _boundRect[0]);
+#endif
+    QList<qreal> _angle;
+    _angle.append(std::abs(L1.angleTo(QLineF(L1.p1(),_point))));
+    _angle.append(std::abs(L2.angleTo(QLineF(L2.p1(),_point))));
+    _angle.append(std::abs(L3.angleTo(QLineF(L3.p1(),_point))));
+    _angle.append(std::abs(L4.angleTo(QLineF(L4.p1(),_point))));
+
+    int _returnValue = 0;
+    for(int i =0; i < 4; i++){
+         double radians = (M_PI / 180.0) * (_angle[_returnValue]);
+         double radians1 = (M_PI / 180.0) * (_angle[i]);
+        if(std::abs(sin(radians1)) < std::abs(sin(radians))) _returnValue = i;
+    }
+    return _returnValue;
+}
+
+int SurveyComplexItem::_getLength(QPointF p1, QPointF p2)
+{
+    // return lenght of 2 points
+    QLineF buf(p1, p2);
+    return int(buf.length());
 }
 
 /// Adjust the line segments such that they are all going the same direction with respect to going from P1->P2
@@ -654,6 +1094,8 @@ bool SurveyComplexItem::_nextTransectCoord(const QList<QGeoCoordinate>& transect
 
 void SurveyComplexItem::_buildAndAppendMissionItems(QList<MissionItem*>& items, QObject* missionItemParent)
 {
+#define _no_capture_
+
     qCDebug(SurveyComplexItemLog) << "_buildAndAppendMissionItems";
 
     // Now build the mission items from the transect points
@@ -685,6 +1127,7 @@ void SurveyComplexItem::_buildAndAppendMissionItems(QList<MissionItem*>& items, 
                                    false,                                       // isCurrentItem
                                    missionItemParent);
             items.append(item);
+#ifndef _no_capture_
             if (hoverAndCaptureEnabled()) {
                 item = new MissionItem(seqNum++,
                                        MAV_CMD_IMAGE_START_CAPTURE,
@@ -698,7 +1141,6 @@ void SurveyComplexItem::_buildAndAppendMissionItems(QList<MissionItem*>& items, 
                                        missionItemParent);
                 items.append(item);
             }
-
             if (firstOverallPoint && addTriggerAtBeginning) {
                 // Start triggering
                 addTriggerAtBeginning = false;
@@ -749,9 +1191,10 @@ void SurveyComplexItem::_buildAndAppendMissionItems(QList<MissionItem*>& items, 
                     items.append(item);
                 }
             }
+#endif
         }
     }
-
+#ifndef _no_capture_
     if (triggerCamera() && !hoverAndCaptureEnabled() && imagesEverywhere) {
         // Stop triggering
         MissionItem* item = new MissionItem(seqNum++,
@@ -766,6 +1209,7 @@ void SurveyComplexItem::_buildAndAppendMissionItems(QList<MissionItem*>& items, 
                                             missionItemParent);
         items.append(item);
     }
+#endif
 }
 
 
@@ -793,6 +1237,296 @@ void SurveyComplexItem::_rebuildTransectsPhase1(void)
     	} else {
     		_rebuildTransectsPhase1WorkerSinglePolygon(true /* refly */);
     	}
+    }
+}
+void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon_org(bool refly)
+{
+    if (_ignoreRecalc) {
+        return;
+    }
+
+    // If the transects are getting rebuilt then any previously loaded mission items are now invalid
+    if (_loadedMissionItemsParent) {
+        _loadedMissionItems.clear();
+        _loadedMissionItemsParent->deleteLater();
+        _loadedMissionItemsParent = nullptr;
+    }
+
+    // First pass will clear old transect data, refly will append to existing data
+    if (!refly) {
+        _transects.clear();
+        _transectsPathHeightInfo.clear();
+    }
+
+    if (_surveyAreaPolygon.count() < 3) {
+        return;
+    }
+
+    // Convert polygon to NED
+
+    QList<QPointF> polygonPoints;
+    QGeoCoordinate tangentOrigin = _surveyAreaPolygon.pathModel().value<QGCQGeoCoordinate*>(0)->coordinate();
+    qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 Convert polygon to NED - _surveyAreaPolygon.count():tangentOrigin" << _surveyAreaPolygon.count() << tangentOrigin;
+    for (int i=0; i<_surveyAreaPolygon.count(); i++) {
+        double y, x, down;
+        QGeoCoordinate vertex = _surveyAreaPolygon.pathModel().value<QGCQGeoCoordinate*>(i)->coordinate();
+        if (i == 0) {
+            // This avoids a nan calculation that comes out of convertGeoToNed
+            x = y = 0;
+        } else {
+            convertGeoToNed(vertex, tangentOrigin, &y, &x, &down);
+        }
+        polygonPoints += QPointF(x, y);
+        qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 vertex:x:y" << vertex << polygonPoints.last().x() << polygonPoints.last().y();
+    }
+
+    // Generate transects
+
+    double gridAngle = _gridAngleFact.rawValue().toDouble();
+    double gridSpacing = _cameraCalc.adjustedFootprintSide()->rawValue().toDouble();
+    if (gridSpacing < 0.5) {
+        // We can't let gridSpacing get too small otherwise we will end up with too many transects.
+        // So we limit to 0.5 meter spacing as min and set to huge value which will cause a single
+        // transect to be added.
+        gridSpacing = 100000;
+    }
+
+    gridAngle = _clampGridAngle90(gridAngle);
+    gridAngle += refly ? 90 : 0;
+    qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 Clamped grid angle" << gridAngle;
+    qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 gridSpacing:gridAngle:refly" << gridSpacing << gridAngle << refly;
+
+    // Convert polygon to bounding rect
+
+    qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 Polygon";
+    QPolygonF polygon;
+    for (int i=0; i<polygonPoints.count(); i++) {
+        qCDebug(SurveyComplexItemLog) << "Vertex" << polygonPoints[i];
+        polygon << polygonPoints[i];
+    }
+    polygon << polygonPoints[0];
+    QRectF boundingRect = polygon.boundingRect();
+    QPointF boundingCenter = boundingRect.center();
+    qCDebug(SurveyComplexItemLog) << "Bounding rect" << boundingRect.topLeft().x() << boundingRect.topLeft().y() << boundingRect.bottomRight().x() << boundingRect.bottomRight().y();
+
+    // Create set of rotated parallel lines within the expanded bounding rect. Make the lines larger than the
+    // bounding box to guarantee intersection.
+
+    QList<QLineF> lineList;
+
+    // Transects are generated to be as long as the largest width/height of the bounding rect plus some fudge factor.
+    // This way they will always be guaranteed to intersect with a polygon edge no matter what angle they are rotated to.
+    // They are initially generated with the transects flowing from west to east and then points within the transect north to south.
+    double maxWidth = qMax(boundingRect.width(), boundingRect.height()) + 2000.0;
+    double halfWidth = maxWidth / 2.0;
+    double transectX = boundingCenter.x() - halfWidth;
+    double transectXMax = transectX + maxWidth;
+
+    while (transectX < (transectXMax)) {
+        double transectYTop = boundingCenter.y() - halfWidth;
+        double transectYBottom = boundingCenter.y() + halfWidth;
+
+        lineList += QLineF(_rotatePoint(QPointF(transectX, transectYTop), boundingCenter, gridAngle), _rotatePoint(QPointF(transectX, transectYBottom), boundingCenter, gridAngle));
+        transectX += gridSpacing;
+    }
+
+    // Now intersect the lines with the polygon
+    QList<QLineF> intersectLines;
+    #if 1
+    _intersectLinesWithPolygon(lineList, polygon, intersectLines);
+    #else
+    // This is handy for debugging grid problems, not for release
+    intersectLines = lineList;
+    #endif
+
+    // Less than two transects intersected with the polygon:
+    //      Create a single transect which goes through the center of the polygon
+    //      Intersect it with the polygon
+    if (intersectLines.count() < 2) {
+        _surveyAreaPolygon.center();
+        QLineF firstLine = lineList.first();
+        QPointF lineCenter = firstLine.pointAt(0.5);
+        QPointF centerOffset = boundingCenter - lineCenter;
+        firstLine.translate(centerOffset);
+        lineList.clear();
+        lineList.append(firstLine);
+        intersectLines = lineList;
+        _intersectLinesWithPolygon(lineList, polygon, intersectLines);
+    }
+
+    // Make sure all lines are going the same direction. Polygon intersection leads to lines which
+    // can be in varied directions depending on the order of the intesecting sides.
+    QList<QLineF> resultLines;
+    _adjustLineDirection(intersectLines, resultLines);
+
+    // adding obstacle
+    QList<obstacleTransect> _obstacleEdited;
+    #if 1
+        QPolygonF _obstacle;
+        int _size = 30;
+        _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+        _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() + _size));
+        _obstacle << (QPointF(boundingCenter.x() + _size, boundingCenter.y() + _size));
+        _obstacle << (QPointF(boundingCenter.x() + _size, boundingCenter.y() - _size));
+        _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+
+        QPolygonF _obstacle1;
+        _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+        _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() + _size));
+        _obstacle1 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() + _size));
+        _obstacle1 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() - _size));
+        _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+        _obstacle1.translate(0, 70);
+
+//        _intersectLinesWithObstacle(resultLines, _obstacle, resultLines, _obstacleEdited);
+//        _intersectLinesWithObstacle(resultLines, _obstacle1, resultLines, _obstacleEdited);
+    #else
+    if(_surveyAreaPolygon.obstacle_count() > 0){
+        QPolygonF _obstacle;
+        QList<QPointF> obstaclePoints;
+        for (int i=0; i<_surveyAreaPolygon.obstacle_count(); i++) {
+            double y, x, down;
+            QGeoCoordinate vertex = _surveyAreaPolygon.obstaclepathModel().value<QGCQGeoCoordinate*>(i)->coordinate();
+            /*if (i == 0) {
+                // This avoids a nan calculation that comes out of convertGeoToNed
+                x = y = 0;
+            } else*/ {
+                convertGeoToNed(vertex, tangentOrigin, &y, &x, &down);
+            }
+            obstaclePoints += QPointF(x, y);
+        }
+        for(int i =0; i < obstaclePoints.count(); i++){
+            _obstacle << obstaclePoints[i];
+        }
+        _obstacle << obstaclePoints[0];
+
+        _intersectLinesWithObstacle(resultLines, _obstacle, resultLines, _obstacleEdited);
+    }
+    #endif
+
+    // Convert from NED to Geo
+    QList<QList<QGeoCoordinate>> transects;
+    _transectFromNEDtoGeo(transects, resultLines, tangentOrigin);
+
+    _adjustTransectsToEntryPointLocation(transects);
+
+    if (refly) {
+        _optimizeTransectsForShortestDistance(_transects.last().last().coord, transects);
+    }
+
+    if (_flyAlternateTransectsFact.rawValue().toBool()) {
+        QList<QList<QGeoCoordinate>> alternatingTransects;
+        for (int i=0; i<transects.count(); i++) {
+            if (!(i & 1)) {
+                alternatingTransects.append(transects[i]);
+            }
+        }
+        for (int i=transects.count()-1; i>0; i--) {
+            if (i & 1) {
+                alternatingTransects.append(transects[i]);
+            }
+        }
+        transects = alternatingTransects;
+    }
+
+    // Adjust to lawnmower pattern
+//    _lawnmowerPattern(transects, _obstacleEdited);
+
+    // Convert to CoordInfo transects and append to _transects
+    for (const QList<QGeoCoordinate>& transect : transects) {
+        QGeoCoordinate                                  coord;
+        QList<TransectStyleComplexItem::CoordInfo_t>    coordInfoTransect;
+        TransectStyleComplexItem::CoordInfo_t           coordInfo;
+
+        coordInfo = { transect[0], CoordTypeSurveyEdge };
+        coordInfoTransect.append(coordInfo);
+        coordInfo = { transect[1], CoordTypeSurveyEdge };
+        coordInfoTransect.append(coordInfo);
+
+    #if 0
+        // For hover and capture we need points for each camera location within the transect
+        if (triggerCamera() && hoverAndCaptureEnabled()) {
+            double transectLength = transect[0].distanceTo(transect[1]);
+            double transectAzimuth = transect[0].azimuthTo(transect[1]);
+            if (triggerDistance() < transectLength) {
+                int cInnerHoverPoints = static_cast<int>(floor(transectLength / triggerDistance()));
+                qCDebug(SurveyComplexItemLog) << "cInnerHoverPoints" << cInnerHoverPoints;
+                for (int i=0; i<cInnerHoverPoints; i++) {
+                    QGeoCoordinate hoverCoord = transect[0].atDistanceAndAzimuth(triggerDistance() * (i + 1), transectAzimuth);
+                    TransectStyleComplexItem::CoordInfo_t coordInfo = { hoverCoord, CoordTypeInteriorHoverTrigger };
+                    coordInfoTransect.insert(1 + i, coordInfo);
+                }
+            }
+        }
+    #endif
+        // Extend the transect ends for turnaround
+        if (_hasTurnaround() && 0) {
+            QGeoCoordinate turnaroundCoord;
+            double turnAroundDistance = _turnAroundDistanceFact.rawValue().toDouble();
+
+            double azimuth = transect[0].azimuthTo(transect[1]);
+            turnaroundCoord = transect[0].atDistanceAndAzimuth(-turnAroundDistance, azimuth);
+            turnaroundCoord.setAltitude(qQNaN());
+            TransectStyleComplexItem::CoordInfo_t coordInfo = { turnaroundCoord, CoordTypeTurnaround };
+            coordInfoTransect.prepend(coordInfo);
+
+            azimuth = transect.last().azimuthTo(transect[transect.count() - 2]);
+            turnaroundCoord = transect.last().atDistanceAndAzimuth(-turnAroundDistance, azimuth);
+            turnaroundCoord.setAltitude(qQNaN());
+            coordInfo = { turnaroundCoord, CoordTypeTurnaround };
+            coordInfoTransect.append(coordInfo);
+        }
+        _transects.append(coordInfoTransect);
+    }
+}
+void SurveyComplexItem::_lawnmowerPattern_org(QList<QList<QGeoCoordinate>> &transects, QList<obstacleTransect> &_obstacleEdited)
+{
+    int _startObstacle = 0, _endObstacle = 0;
+    bool reverseVertices = false;
+    for (int i=0; i<transects.count(); i++) {
+        // We must reverse the vertices for every other transect in order to make a lawnmower pattern
+
+        for(int t =0; t < _obstacleEdited.length(); t++){
+            _startObstacle = _obstacleEdited[t].startEditedLine;
+            _endObstacle = _obstacleEdited[t].numEditedLine;
+            if(i>=_startObstacle && i <(_startObstacle+_endObstacle)) {
+                break;
+            }
+        }
+        if(i>=_startObstacle && i <(_startObstacle+_endObstacle)) {
+            // if modified transect, make sure that all 3 transects are same direction
+            if(reverseVertices){
+                for(int k = i; k < i+3; k++){
+                    QList<QGeoCoordinate> transectVertices = transects[k];
+
+                    QList<QGeoCoordinate> reversedVertices;
+                    for (int j=transectVertices.count()-1; j>=0; j--) {
+                        reversedVertices.append(transectVertices[j]);
+                    }
+                    transectVertices = reversedVertices;
+
+                    transects[k] = transectVertices;
+                }
+                // swap 1st and 3rd part of new transect
+//                transects.swap(i, i+2);
+            }
+            i+=2;
+            reverseVertices = !reverseVertices;
+
+        }else{
+            QList<QGeoCoordinate> transectVertices = transects[i];
+            if (reverseVertices) {
+                reverseVertices = false;
+                QList<QGeoCoordinate> reversedVertices;
+                for (int j=transectVertices.count()-1; j>=0; j--) {
+                    reversedVertices.append(transectVertices[j]);
+                }
+                transectVertices = reversedVertices;
+            } else {
+                reverseVertices = true;
+            }
+            transects[i] = transectVertices;
+        }
     }
 }
 
@@ -851,7 +1585,6 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
     gridAngle = _clampGridAngle90(gridAngle);
     gridAngle += refly ? 90 : 0;
     qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 Clamped grid angle" << gridAngle;
-
     qCDebug(SurveyComplexItemLog) << "_rebuildTransectsPhase1 gridSpacing:gridAngle:refly" << gridSpacing << gridAngle << refly;
 
     // Convert polygon to bounding rect
@@ -879,7 +1612,8 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
     double halfWidth = maxWidth / 2.0;
     double transectX = boundingCenter.x() - halfWidth;
     double transectXMax = transectX + maxWidth;
-    while (transectX < transectXMax) {
+
+    while (transectX < (transectXMax)) {
         double transectYTop = boundingCenter.y() - halfWidth;
         double transectYBottom = boundingCenter.y() + halfWidth;
 
@@ -889,12 +1623,8 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
 
     // Now intersect the lines with the polygon
     QList<QLineF> intersectLines;
-#if 1
     _intersectLinesWithPolygon(lineList, polygon, intersectLines);
-#else
-    // This is handy for debugging grid problems, not for release
-    intersectLines = lineList;
-#endif
+
 
     // Less than two transects intersected with the polygon:
     //      Create a single transect which goes through the center of the polygon
@@ -913,22 +1643,94 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
 
     // Make sure all lines are going the same direction. Polygon intersection leads to lines which
     // can be in varied directions depending on the order of the intesecting sides.
+
     QList<QLineF> resultLines;
     _adjustLineDirection(intersectLines, resultLines);
 
+    QList<myLine> myResultLines;
+    for(int i =0; i<resultLines.length(); i++){
+        myLine buf;
+        buf._line = resultLines[i];
+        buf._parent_idx = i;
+        if(i%2) buf._must_reverse = true;
+        myResultLines.append(buf);
+    }
+
+    // adding obstacle
+    QList<QPolygonF> _obstacleList;
+    QPolygonF _obstacle;
+#if 0
+    int _size = 30;
+    _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() + _size));
+    _obstacle << (QPointF(boundingCenter.x() + _size, boundingCenter.y() + _size));
+    _obstacle << (QPointF(boundingCenter.x() + _size, boundingCenter.y() - _size));
+    _obstacle << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacleList.append(_obstacle);
+
+    QPolygonF _obstacle1;
+    _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() + _size));
+    _obstacle1 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() + _size));
+    _obstacle1 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() - _size));
+    _obstacle1 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacle1.translate(70, 70);
+    _obstacleList.append(_obstacle1);
+
+    QPolygonF _obstacle2;
+    _obstacle2 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacle2 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() + _size));
+    _obstacle2 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() + _size));
+    _obstacle2 << (QPointF(boundingCenter.x() + _size, boundingCenter.y() - _size));
+    _obstacle2 << (QPointF(boundingCenter.x() - _size, boundingCenter.y() - _size));
+    _obstacle2.translate(30, -70);
+//    _obstacleList.append(_obstacle2);
+#else
+    if(_surveyAreaPolygon.obstacle_count() > 0){
+        QPolygonF _obstacle;
+        QList<QPointF> obstaclePoints;
+        for (int i=0; i<_surveyAreaPolygon.obstacle_count(); i++) {
+            double y, x, down;
+            QGeoCoordinate vertex = _surveyAreaPolygon.obstaclepathModel().value<QGCQGeoCoordinate*>(i)->coordinate();
+            /*if (i == 0) {
+                // This avoids a nan calculation that comes out of convertGeoToNed
+                x = y = 0;
+            } else*/ {
+                convertGeoToNed(vertex, tangentOrigin, &y, &x, &down);
+            }
+            obstaclePoints += QPointF(x, y);
+        }
+        for(int i =0; i < obstaclePoints.count(); i++){
+            _obstacle << obstaclePoints[i];
+        }
+        _obstacle << obstaclePoints[0];
+
+        _obstacleList.append(_obstacle);
+    }
+#endif
+
+    for (QPolygonF _ob : _obstacleList) {
+        _intersectLinesWithObstacle(myResultLines, _ob, myResultLines);
+    }
+#define _custom_resort_
+#ifdef _custom_resort_
+    // resorted line result to get shorted distance
+    for(int i = 0; i < myResultLines.count() - 1; i++){
+        QLineF l1(myResultLines[i]._line.p2(), myResultLines[i+1]._line.p1());
+        QLineF l2(myResultLines[i]._line.p2(), myResultLines[i+1]._line.p2());
+
+        if(l1.length() > l2.length()){
+            myResultLines[i+1]._line.setPoints(myResultLines[i+1]._line.p2(), myResultLines[i+1]._line.p1());
+        }
+    }
+#endif
+    resultLines.clear();
+    for(int i =0; i < myResultLines.length(); i++){
+        resultLines.append(myResultLines[i]._line);
+    }
     // Convert from NED to Geo
     QList<QList<QGeoCoordinate>> transects;
-    for (const QLineF& line : resultLines) {
-        QGeoCoordinate          coord;
-        QList<QGeoCoordinate>   transect;
-
-        convertNedToGeo(line.p1().y(), line.p1().x(), 0, tangentOrigin, &coord);
-        transect.append(coord);
-        convertNedToGeo(line.p2().y(), line.p2().x(), 0, tangentOrigin, &coord);
-        transect.append(coord);
-
-        transects.append(transect);
-    }
+    _transectFromNEDtoGeo(transects, resultLines, tangentOrigin);
 
     _adjustTransectsToEntryPointLocation(transects);
 
@@ -952,23 +1754,9 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
     }
 
     // Adjust to lawnmower pattern
-    bool reverseVertices = false;
-    for (int i=0; i<transects.count(); i++) {
-        // We must reverse the vertices for every other transect in order to make a lawnmower pattern
-        QList<QGeoCoordinate> transectVertices = transects[i];
-        if (reverseVertices) {
-            reverseVertices = false;
-            QList<QGeoCoordinate> reversedVertices;
-            for (int j=transectVertices.count()-1; j>=0; j--) {
-                reversedVertices.append(transectVertices[j]);
-            }
-            transectVertices = reversedVertices;
-        } else {
-            reverseVertices = true;
-        }
-        transects[i] = transectVertices;
-    }
-
+#ifndef _custom_resort_
+    _lawnmowerPattern(transects, myResultLines);
+#endif
     // Convert to CoordInfo transects and append to _transects
     for (const QList<QGeoCoordinate>& transect : transects) {
         QGeoCoordinate                                  coord;
@@ -980,6 +1768,7 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
         coordInfo = { transect[1], CoordTypeSurveyEdge };
         coordInfoTransect.append(coordInfo);
 
+#if 0
         // For hover and capture we need points for each camera location within the transect
         if (triggerCamera() && hoverAndCaptureEnabled()) {
             double transectLength = transect[0].distanceTo(transect[1]);
@@ -994,9 +1783,9 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
                 }
             }
         }
-
+#endif
         // Extend the transect ends for turnaround
-        if (_hasTurnaround()) {
+        if (_hasTurnaround() && 0) {
             QGeoCoordinate turnaroundCoord;
             double turnAroundDistance = _turnAroundDistanceFact.rawValue().toDouble();
 
@@ -1012,8 +1801,39 @@ void SurveyComplexItem::_rebuildTransectsPhase1WorkerSinglePolygon(bool refly)
             coordInfo = { turnaroundCoord, CoordTypeTurnaround };
             coordInfoTransect.append(coordInfo);
         }
-
         _transects.append(coordInfoTransect);
+    }
+}
+void SurveyComplexItem::_lawnmowerPattern(QList<QList<QGeoCoordinate>> &transects, QList<myLine> &_resultLines)
+{
+    for (int i=0; i<_resultLines.length(); i++) {
+        // We must reverse the vertices for every other transect in order to make a lawnmower pattern
+
+        QList<QGeoCoordinate> transectVertices = transects[i];
+        bool reverseVertices = _resultLines[i]._must_reverse;
+        if (reverseVertices) {
+            QList<QGeoCoordinate> reversedVertices;
+            for (int j=transectVertices.count()-1; j>=0; j--) {
+                reversedVertices.append(transectVertices[j]);
+            }
+            transectVertices = reversedVertices;
+        }
+        transects[i] = transectVertices;
+    }
+}
+
+void SurveyComplexItem::_transectFromNEDtoGeo(QList<QList<QGeoCoordinate>> &transects, QList<QLineF> &resultLines, QGeoCoordinate tangentOrigin)
+{
+    for (const QLineF& line : resultLines) {
+        QGeoCoordinate          coord;
+        QList<QGeoCoordinate>   transect;
+
+        convertNedToGeo(line.p1().y(), line.p1().x(), 0, tangentOrigin, &coord);
+        transect.append(coord);
+        convertNedToGeo(line.p2().y(), line.p2().x(), 0, tangentOrigin, &coord);
+        transect.append(coord);
+
+        transects.append(transect);
     }
 }
 

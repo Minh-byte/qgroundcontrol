@@ -113,10 +113,17 @@ void PlanManager::_writeMissionCount(void)
                                         qgcApp()->toolbox()->mavlinkProtocol()->getComponentId(),
                                         _dedicatedLink->mavlinkChannel(),
                                         &message,
+#ifdef __gremsy_modify__
+                                        _vehicle->id(),
+                                        MAV_COMP_ID_USER1,
+#else
                                         _vehicle->id(),
                                         MAV_COMP_ID_AUTOPILOT1,
+#endif
                                         _writeMissionItems.count(),
                                         _planType);
+//qDebug() << "System info" << qgcApp()->toolbox()->mavlinkProtocol()->getSystemId() << qgcApp()->toolbox()->mavlinkProtocol()->getComponentId();
+    qDebug() << "_writeMissionCount" << _writeMissionItems.count() << "to" << message.sysid << message.compid;
 
     _vehicle->sendMessageOnLink(_dedicatedLink, message);
     _startAckTimeout(AckMissionRequest);
@@ -310,6 +317,7 @@ void PlanManager::_handleMissionCount(const mavlink_message_t& message)
     mavlink_mission_count_t missionCount;
 
     mavlink_msg_mission_count_decode(&message, &missionCount);
+    qDebug() << "_handleMissionCount" << missionCount.count;
 
     if (missionCount.mission_type != _planType) {
         // if there was a previous transaction with a different mission_type, it can happen that we receive
@@ -476,7 +484,7 @@ void PlanManager::_handleMissionItem(const mavlink_message_t& message, bool miss
         return;
     }
 
-    emit progressPct((double)seq / (double)_missionItemCountToRead);
+    emit progressPct(double(seq) / double(_missionItemCountToRead));
     
     _retryCount = 0;
     if (_itemIndicesToRead.count() == 0) {
@@ -502,11 +510,13 @@ void PlanManager::_handleMissionRequest(const mavlink_message_t& message, bool m
         mavlink_msg_mission_request_int_decode(&message, &missionRequest);
         missionRequestMissionType = static_cast<MAV_MISSION_TYPE>(missionRequest.mission_type);
         missionRequestSeq = missionRequest.seq;
+        qDebug() << "_handleMissionRequest_Int" << missionRequestSeq << "from" << message.sysid << message.compid;
     } else {
         mavlink_mission_request_t missionRequest;
         mavlink_msg_mission_request_decode(&message, &missionRequest);
         missionRequestMissionType = static_cast<MAV_MISSION_TYPE>(missionRequest.mission_type);
         missionRequestSeq = missionRequest.seq;
+        qDebug() << "_handleMissionRequest" << missionRequestSeq << "from" << message.sysid << message.compid;
     }
 
     if (missionRequestMissionType != _planType) {
@@ -548,8 +558,13 @@ void PlanManager::_handleMissionRequest(const mavlink_message_t& message, bool m
                                                qgcApp()->toolbox()->mavlinkProtocol()->getComponentId(),
                                                _dedicatedLink->mavlinkChannel(),
                                                &messageOut,
+       #ifdef __gremsy_modify__
+                                               _vehicle->id(),
+                                               MAV_COMP_ID_USER1,
+       #else
                                                _vehicle->id(),
                                                MAV_COMP_ID_AUTOPILOT1,
+       #endif
                                                missionRequestSeq,
                                                item->frame(),
                                                item->command(),
@@ -568,8 +583,13 @@ void PlanManager::_handleMissionRequest(const mavlink_message_t& message, bool m
                                            qgcApp()->toolbox()->mavlinkProtocol()->getComponentId(),
                                            _dedicatedLink->mavlinkChannel(),
                                            &messageOut,
+   #ifdef __gremsy_modify__
+                                           _vehicle->id(),
+                                           MAV_COMP_ID_USER1,
+   #else
                                            _vehicle->id(),
                                            MAV_COMP_ID_AUTOPILOT1,
+   #endif
                                            missionRequestSeq,
                                            item->frame(),
                                            item->command(),
@@ -586,6 +606,7 @@ void PlanManager::_handleMissionRequest(const mavlink_message_t& message, bool m
     }
     
     _vehicle->sendMessageOnLink(_dedicatedLink, messageOut);
+    qDebug() << "Send mission item" << missionRequestSeq << "to" << messageOut.sysid << messageOut.compid;
     _startAckTimeout(AckMissionRequest);
 }
 
@@ -594,6 +615,8 @@ void PlanManager::_handleMissionAck(const mavlink_message_t& message)
     mavlink_mission_ack_t missionAck;
     
     mavlink_msg_mission_ack_decode(&message, &missionAck);
+    qDebug() << "_handleMissionAck" << missionAck.mission_type << _planType;
+
     if (missionAck.mission_type != _planType) {
         // if there was a previous transaction with a different mission_type, it can happen that we receive
         // a stale message here, for example when the MAV ran into a timeout and sent a message twice
@@ -619,7 +642,7 @@ void PlanManager::_handleMissionAck(const mavlink_message_t& message)
     if (!_checkForExpectedAck(_expectedAck)) {
         return;
     }
-
+qDebug() << "tp1" << savedExpectedAck;
     qCDebug(PlanManagerLog) << QStringLiteral("_handleMissionAck %1 type:").arg(_planTypeString()) << _missionResultToString((MAV_MISSION_RESULT)missionAck.type);
 
     switch (savedExpectedAck) {
@@ -639,6 +662,7 @@ void PlanManager::_handleMissionAck(const mavlink_message_t& message)
         break;
     case AckMissionRequest:
         // MISSION_REQUEST is expected, or MISSION_ACK to end sequence
+        qDebug() << missionAck.type;
         if (missionAck.type == MAV_MISSION_ACCEPTED) {
             if (_itemIndicesToWrite.count() == 0) {
                 qCDebug(PlanManagerLog) << QStringLiteral("_handleMissionAck write sequence complete %1").arg(_planTypeString());
@@ -677,27 +701,39 @@ void PlanManager::_mavlinkMessageReceived(const mavlink_message_t& message)
 {
     switch (message.msgid) {
     case MAVLINK_MSG_ID_MISSION_COUNT:
+//        qDebug() << "MAVLINK_MSG_ID_MISSION_COUNT";
         _handleMissionCount(message);
+
         break;
 
     case MAVLINK_MSG_ID_MISSION_ITEM:
+        qDebug() << "MAVLINK_MSG_ID_MISSION_ITEM";
         _handleMissionItem(message, false /* missionItemInt */);
+
         break;
 
     case MAVLINK_MSG_ID_MISSION_ITEM_INT:
+//        qDebug() << "MAVLINK_MSG_ID_MISSION_ITEM_INT";
         _handleMissionItem(message, true /* missionItemInt */);
+
         break;
 
     case MAVLINK_MSG_ID_MISSION_REQUEST:
+        qDebug() << "MAVLINK_MSG_ID_MISSION_REQUEST";
         _handleMissionRequest(message, false /* missionItemInt */);
+
         break;
 
     case MAVLINK_MSG_ID_MISSION_REQUEST_INT:
+        qDebug() << "MAVLINK_MSG_ID_MISSION_REQUEST_INT";
         _handleMissionRequest(message, true /* missionItemInt */);
+
         break;
 
     case MAVLINK_MSG_ID_MISSION_ACK:
+        qDebug() << "MAVLINK_MSG_ID_MISSION_ACK";
         _handleMissionAck(message);
+
         break;
     }
 }
