@@ -254,6 +254,12 @@ Vehicle::Vehicle(LinkInterface*             link,
     _mavCommandAckTimer.setInterval(_highLatencyLink ? _mavCommandAckTimeoutMSecsHighLatency : _mavCommandAckTimeoutMSecs);
     connect(&_mavCommandAckTimer, &QTimer::timeout, this, &Vehicle::_sendMavCommandAgain);
 
+    // jetson connection timer
+    _jetsonConnectionTimer.setInterval(2000);
+    connect(&_jetsonConnectionTimer, &QTimer::timeout, this, &Vehicle::_jetsonConectionTimeout);
+    setJetsonOnline(false);
+    setObstacleFlag(false);
+
     _mav = uas();
 
     // Listen for system messages
@@ -572,7 +578,7 @@ void Vehicle::prepareDelete()
     }
 }
 
-void Vehicle::send_cmd_long()
+void Vehicle::send_obstacle_Jetson(float _flag)
 {
     mavlink_message_t       msg;
     mavlink_command_long_t  cmd;
@@ -580,10 +586,36 @@ void Vehicle::send_cmd_long()
     memset(&cmd, 0, sizeof(cmd));
     cmd.target_system =     1;
     cmd.target_component =  25;
-    cmd.command =           31010;
+    cmd.command =           MAV_CMD_USER_2;
     cmd.confirmation =      0;
-    cmd.param1 =            1;
-    cmd.param2 =            2;
+    cmd.param1 =            _flag;
+    cmd.param2 =            0;
+    cmd.param3 =            0;
+    cmd.param4 =            0;
+    cmd.param5 =            0;
+    cmd.param6 =            0;
+    cmd.param7 =            0;
+    mavlink_msg_command_long_encode_chan(_mavlink->getSystemId(),
+                                         _mavlink->getComponentId(),
+                                         priorityLink()->mavlinkChannel(),
+                                         &msg,
+                                         &cmd);
+
+    sendMessageOnLink(priorityLink(), msg);
+}
+
+void Vehicle::send_cmd_Jetson(float _cmd)
+{
+    mavlink_message_t       msg;
+    mavlink_command_long_t  cmd;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.target_system =     1;
+    cmd.target_component =  25;
+    cmd.command =           MAV_CMD_USER_1;
+    cmd.confirmation =      0;
+    cmd.param1 =            _cmd;
+    cmd.param2 =            0;
     cmd.param3 =            0;
     cmd.param4 =            0;
     cmd.param5 =            0;
@@ -662,6 +694,12 @@ void Vehicle::resetCounters()
 
 void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t message)
 {
+#ifdef __gremsy_modify__
+    // check Jetson heartbeat
+    _handleJetsonMessage(message);
+#endif
+     _handleJetsonMessage(message);
+
     // If the link is already running at Mavlink V2 set our max proto version to it.
     unsigned mavlinkVersion = _mavlink->getCurrentVersion();
     if (_maxProtoVersion != mavlinkVersion && mavlinkVersion >= 200) {
@@ -1814,6 +1852,44 @@ void Vehicle::_handleHeartbeat(mavlink_message_t& message)
     }
 }
 
+void Vehicle::_handleJetsonMessage(mavlink_message_t &message)
+{
+    if (message.compid != 25 || message.sysid != 1) {
+        // it is not heartbeat from Jetson
+        return;
+    }
+
+    switch (message.msgid) {
+    case MAVLINK_MSG_ID_COMMAND_LONG:
+        mavlink_command_long_t cmd;
+        mavlink_msg_command_long_decode(&message, &cmd);
+        switch (cmd.command) {
+        case MAV_CMD_USER_1:
+            qDebug() << "Jetson dummy heartbeat";
+            setJetsonOnline(true);
+            _jetsonConnectionTimer.start();
+            break;
+        case MAV_CMD_USER_2:
+            if(int(cmd.param1) == 1)
+                setObstacleFlag(true);
+            else setObstacleFlag(false);
+            qDebug() << "Jetson obstacle flag" << cmd.param1;
+            break;
+        default:
+            break;
+        }
+        break;
+//    case MAVLINK_MSG_ID_HEARTBEAT:
+//        setJetsonOnline(true);
+//        _jetsonConnectionTimer.start();
+//        break;
+//    }
+    default:
+        qDebug() << "Get Jetson message" << message.msgid;
+        break;
+    }
+}
+
 void Vehicle::_handleRadioStatus(mavlink_message_t& message)
 {
 
@@ -2444,6 +2520,18 @@ void Vehicle::setArmed(bool armed)
                    MAV_CMD_COMPONENT_ARM_DISARM,
                    true,    // show error if fails
                    armed ? 1.0f : 0.0f);
+}
+
+void Vehicle::setJetsonOnline(bool jetsonOnline)
+{
+    _jetsonOnline = jetsonOnline;
+    emit jetsonOnlineChanged(_jetsonOnline);
+}
+
+void Vehicle::setObstacleFlag(bool obstacleFlag)
+{
+    _obstacleFlag = obstacleFlag;
+    emit obstacleFlagChanged(_obstacleFlag);
 }
 
 bool Vehicle::flightModeSetAvailable()
@@ -3439,6 +3527,13 @@ void Vehicle::_sendMavCommandAgain()
     }
 
     sendMessageOnLink(priorityLink(), msg);
+}
+
+void Vehicle::_jetsonConectionTimeout()
+{
+    setJetsonOnline(false);
+    _jetsonConnectionTimer.stop();
+    qDebug() << "Vehicle::_jetsonConectionTimeout()";
 }
 
 void Vehicle::_sendNextQueuedMavCommand()

@@ -536,6 +536,10 @@ public:
     Q_PROPERTY(QGeoCoordinate       homePosition            READ homePosition                                           NOTIFY homePositionChanged)
     Q_PROPERTY(QGeoCoordinate       armedPosition           READ armedPosition                                          NOTIFY armedPositionChanged)
     Q_PROPERTY(bool                 armed                   READ armed                  WRITE setArmed                  NOTIFY armedChanged)
+
+    Q_PROPERTY(bool jetsonOnline READ jetsonOnline  WRITE setJetsonOnline   NOTIFY jetsonOnlineChanged)
+    Q_PROPERTY(bool obstacleFlag READ obstacleFlag  WRITE setObstacleFlag   NOTIFY obstacleFlagChanged)
+
     Q_PROPERTY(bool                 autoDisarm              READ autoDisarm                                             NOTIFY autoDisarmChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable  READ flightModeSetAvailable                                 CONSTANT)
     Q_PROPERTY(QStringList          flightModes             READ flightModes                                            NOTIFY flightModesChanged)
@@ -851,7 +855,11 @@ public:
     QGeoCoordinate homePosition();
 
     bool armed      () { return _armed; }
+    bool jetsonOnline      () { return _jetsonOnline; }
+    bool obstacleFlag      () { return _obstacleFlag; }
     void setArmed   (bool armed);
+    void setJetsonOnline  (bool jetsonOnline);
+    void setObstacleFlag  (bool obstacleFlag);
 
     bool flightModeSetAvailable             ();
     QStringList flightModes                 ();
@@ -1117,7 +1125,8 @@ public:
     CheckList   checkListState          () { return _checkListState; }
     void        setCheckListState       (CheckList cl)  { _checkListState = cl; emit checkListStateChanged(); }
 
-    Q_INVOKABLE void send_cmd_long();
+    Q_INVOKABLE void send_cmd_Jetson(float _cmd);
+    Q_INVOKABLE void send_obstacle_Jetson(float _flag);
 
 public slots:
     void setVtolInFwdFlight             (bool vtolInFwdFlight);
@@ -1132,6 +1141,8 @@ signals:
     void homePositionChanged            (const QGeoCoordinate& homePosition);
     void armedPositionChanged();
     void armedChanged                   (bool armed);
+    void jetsonOnlineChanged            (bool jetsonOnline);
+    void obstacleFlagChanged            (bool obstacleFlag);
     void flightModeChanged              (const QString& flightMode);
     void hilModeChanged                 (bool hilMode);
     /** @brief HIL actuator controls (replaces HIL controls) */
@@ -1261,6 +1272,7 @@ private slots:
     void _geoFenceLoadComplete          ();
     void _rallyPointLoadComplete        ();
     void _sendMavCommandAgain           ();
+    void _jetsonConectionTimeout        ();
     void _clearCameraTriggerPoints      ();
     void _updateDistanceHeadingToHome   ();
     void _updateHeadingToNextWP         ();
@@ -1285,6 +1297,7 @@ private:
     void _handlePing                    (LinkInterface* link, mavlink_message_t& message);
     void _handleHomePosition            (mavlink_message_t& message);
     void _handleHeartbeat               (mavlink_message_t& message);
+    void _handleJetsonMessage               (mavlink_message_t& message);
     void _handleRadioStatus             (mavlink_message_t& message);
     void _handleRCChannels              (mavlink_message_t& message);
     void _handleRCChannelsRaw           (mavlink_message_t& message);
@@ -1432,6 +1445,7 @@ private:
 
     QList<MavCommandQueueEntry_t>   _mavCommandQueue;
     QTimer                          _mavCommandAckTimer;
+    QTimer                          _jetsonConnectionTimer;
     int                             _mavCommandRetryCount;
     int                             _capabilitiesRetryCount =               0;
     QTime                           _capabilitiesRetryElapsed;
@@ -1466,6 +1480,8 @@ private:
 #endif
 
     bool    _armed;         ///< true: vehicle is armed
+    bool    _jetsonOnline;
+    bool    _obstacleFlag;
     uint8_t _base_mode;     ///< base_mode from HEARTBEAT
     uint32_t _custom_mode;  ///< custom_mode from HEARTBEAT
 

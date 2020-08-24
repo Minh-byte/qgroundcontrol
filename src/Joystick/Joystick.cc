@@ -466,6 +466,7 @@ void Joystick::run()
             _buttonActionArray[buttonIndex]->buttonTime.start();
         }
     }
+
     while (!_exitThread) {
         _update();
         _handleButtons();

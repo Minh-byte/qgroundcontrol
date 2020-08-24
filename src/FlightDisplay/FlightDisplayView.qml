@@ -38,15 +38,6 @@ Item {
             mainWindow.planMasterControllerView = _planController
         }
     }
-    Timer{
-        interval: 100
-        repeat: true
-        running: activeVehicle
-        onTriggered: {
-            activeVehicle.send_cmd_long()
-            console.log("Send cmd long to Jetson")
-        }
-    }
 
     property alias  guidedController:              guidedActionsController
     property bool   activeVehicleJoystickEnabled:  activeVehicle ? activeVehicle.joystickEnabled : false
@@ -815,4 +806,286 @@ Item {
         }
     }
 
+    property bool _jetsonActive: activeVehicle ? (activeVehicle.jetsonOnline ? true : false) : false
+    property bool _obstacleChecked: activeVehicle ? activeVehicle.obstacleFlag : false
+    property double _manual_cmd: 0
+    // gremsy
+    Rectangle{
+        height: parent.height * 0.425
+        width: parent.width * 0.275
+        x: parent.width * 0.025
+        y: parent.height * 0.55
+        radius: 20
+//        color: activeVehicle ? (activeVehicle.jetsonOnline ? "green" : "red") : "red"
+        color: "white"
+        Column{
+            anchors.fill: parent
+
+            Row{
+                id: pn_heartbeat
+
+                property var _heartbeat_color: "green"
+                height: parent.height * 0.2
+                width: parent.width
+                Item{
+                    height: parent.height
+                    width: height * 0.25
+                }
+                Item{
+                    height: parent.height
+                    width: height
+                    Rectangle{
+                        height: parent.height * 0.7
+                        width: height
+                        radius: height * 0.5
+                        anchors.centerIn: parent
+                        border.color: _jetsonActive ? "green" :"red"
+
+                        Rectangle{
+                            height: parent.height * 0.8
+                            width: height
+                            radius: height * 0.5
+                            anchors.centerIn: parent
+
+                            color: _jetsonActive ? parent.parent.parent._heartbeat_color : "red"
+                        }
+                    }
+                }
+
+                Text{
+                    height: parent.height
+                    width: parent.width * 0.8
+                    text: _jetsonActive ? "Jetson connected" : "No Jetson found"
+                    font.pixelSize: height * 0.4
+                    color: _jetsonActive ? "green" : "red"
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                Timer{
+                    interval: 500
+                    repeat: true
+                    running: _jetsonActive
+                    onTriggered: {
+                        if(parent._heartbeat_color == "#001100") parent._heartbeat_color = "green"
+                        else parent._heartbeat_color = "#001100"
+                    }
+                }
+            }
+            Rectangle{
+                height: 3
+                width: parent.width
+                color: "black"
+            }
+            Row{
+                id: pn_control
+                enabled: _jetsonActive
+                opacity: enabled ? 1 : 0.3
+                height: parent.height * 0.8
+                width: parent.width
+
+                Column{
+                    enabled: _jetsonActive ? (activeVehicle.obstacleFlag ? true: false) : false
+                    opacity: enabled ? 1 : 0.3
+                    height: parent.height
+                    width: parent.width * 0.7
+                    Item{
+                        height: parent.height * 0.3
+                        width: parent.width
+                        Rectangle{
+                            height: parent.height * 0.9
+                            width: parent.width * 0.5
+                            anchors.centerIn: parent
+                            border.color: "black"
+                            color: mouse_F.pressed ? "gray" : "transparent"
+
+                            Text{
+                                anchors.fill: parent
+                                text: "FORWARD"
+                                font.pixelSize: height * 0.3
+                                color: "black"
+                                verticalAlignment: Text.AlignVCenter
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+                        MouseArea{
+                            id:mouse_F
+                            anchors.fill: parent
+                            onReleased: {
+                                if(_jetsonActive){
+                                    _manual_cmd = 3 // move forward
+                                    activeVehicle.send_cmd_Jetson(_manual_cmd)
+                                }
+                            }
+                        }
+                    }
+                    Row{
+                        height: parent.height * 0.3
+                        width: parent.width
+                        Item{
+                            height: parent.height
+                            width: parent.width * 0.5
+
+                            Rectangle{
+                                height: parent.height * 0.9
+                                width: parent.width * 0.8
+                                anchors.centerIn: parent
+                                border.color: "black"
+                                color: mouse_L.pressed ? "gray" : "transparent"
+
+                                Text{
+                                    anchors.fill: parent
+                                    text: "LEFT"
+                                    font.pixelSize: height * 0.3
+                                    color: "black"
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                            }
+                            MouseArea{
+                                id: mouse_L
+                                anchors.fill: parent
+                                onReleased: {
+                                    if(_jetsonActive){
+                                        _manual_cmd = 1 // shift left
+                                        activeVehicle.send_cmd_Jetson(_manual_cmd)
+                                    }
+                                }
+                            }
+                        }
+                        Item{
+                            height: parent.height
+                            width: parent.width * 0.5
+
+                            Rectangle{
+                                height: parent.height * 0.9
+                                width: parent.width * 0.8
+                                anchors.centerIn: parent
+                                border.color: "black"
+                                color: mouse_R.pressed ? "gray" : "transparent"
+
+                                Text{
+                                    anchors.fill: parent
+                                    text: "RIGHT"
+                                    font.pixelSize: height * 0.3
+                                    color: "black"
+                                    verticalAlignment: Text.AlignVCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                            }
+                            MouseArea{
+                                id: mouse_R
+                                anchors.fill: parent
+                                onReleased: {
+                                    if(_jetsonActive){
+                                        _manual_cmd = 2 // shift rigth
+                                        activeVehicle.send_cmd_Jetson(_manual_cmd)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Item{
+                        height: parent.height * 0.3
+                        width: parent.width
+                        Rectangle{
+                            height: parent.height * 0.9
+                            width: parent.width * 0.5
+                            anchors.centerIn: parent
+                            border.color: "black"
+                            color: mouse_B.pressed ? "gray" : "transparent"
+
+                            Text{
+                                anchors.fill: parent
+                                text: "BACKWARD"
+                                font.pixelSize: height * 0.3
+                                color: "black"
+                                verticalAlignment: Text.AlignVCenter
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+                        MouseArea{
+                            id: mouse_B
+                            anchors.fill: parent
+                            onReleased: {
+                                if(_jetsonActive){
+                                    _manual_cmd = 4 // move backward
+                                    activeVehicle.send_cmd_Jetson(_manual_cmd)
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle{
+                    height: parent.height * 0.7
+                    width: 3
+                    color: "black"
+                    y: (parent.height - height) / 2
+                }
+                Column{
+                    height: parent.height
+                    width: parent.width * 0.3
+                    Item{
+                        height: parent.height * 0.05
+                        width: parent.width
+                    }
+
+                    Rectangle{
+                        height: parent.height * 0.4
+                        width: parent.width * 0.9
+                        x: (parent.width -width) / 2
+                        border.color: "black"
+                        color: mouse_obstacle.pressed ? "gray" : "transparent"
+                        Text{
+                            anchors.fill: parent
+                            text: "OB"
+                            font.pixelSize: height * 0.3
+                            color: _obstacleChecked ? "red" : "black"
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        MouseArea{
+                            id: mouse_obstacle
+                            anchors.fill: parent
+                            onReleased: {
+                                if(_jetsonActive){
+                                    activeVehicle.send_obstacle_Jetson(!_obstacleChecked)
+                                }
+                            }
+                        }
+                    }
+                    Item{
+                        height: parent.height * 0.1
+                        width: parent.width
+                    }
+                    Rectangle{
+                        enabled: _jetsonActive ? (activeVehicle.obstacleFlag ? true: false) : false
+                        opacity: enabled ? 1 : 0.3
+                        height: parent.height * 0.4
+                        width: parent.width * 0.9
+                        x: (parent.width -width) / 2
+                        border.color: "black"
+                        color: mouse_skip.pressed ? "gray" : "transparent"
+                        Text{
+                            anchors.fill: parent
+                            text: "SKIP"
+                            font.pixelSize: height * 0.3
+                            color: "black"
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        MouseArea{
+                            id: mouse_skip
+                            anchors.fill: parent
+                            onReleased: {
+                                if(_jetsonActive){
+                                    _manual_cmd = 5 // skip a waypoint
+                                    activeVehicle.send_cmd_Jetson(_manual_cmd)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

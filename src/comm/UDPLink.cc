@@ -288,6 +288,7 @@ bool UDPLink::_hardwareConnect()
     _socket = new QUdpSocket(this);
     _socket->setProxy(QNetworkProxy::NoProxy);
     _connectState = _socket->bind(host, _udpConfig->localPort(), QAbstractSocket::ReuseAddressHint | QUdpSocket::ShareAddress);
+    qDebug() << "UDPLink::_hardwareConnect()" << host << _udpConfig->localPort();
     if (_connectState) {
         _socket->joinMulticastGroup(QHostAddress("224.0.0.1"));
         //-- Make sure we have a large enough IO buffers

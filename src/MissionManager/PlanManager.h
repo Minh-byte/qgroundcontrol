@@ -19,7 +19,7 @@
 #include "QGCLoggingCategory.h"
 #include "LinkInterface.h"
 
-#define __gremsy_modify__
+//#define __gremsy_modify__
 
 class Vehicle;
 
